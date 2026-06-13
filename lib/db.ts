@@ -1,4 +1,4 @@
-import { createClient, type Client, type InArgs } from "@libsql/client";
+import type { Client, InArgs } from "@libsql/client";
 import path from "path";
 import fs from "fs";
 import { seed } from "./seed";
@@ -183,26 +183,37 @@ function wrap(exec: Executor): Q {
 
 declare global {
   // eslint-disable-next-line no-var
-  var __nexusClient: Client | undefined;
+  var __nexusClientP: Promise<Client> | undefined;
   // eslint-disable-next-line no-var
   var __nexusReady: Promise<void> | undefined;
 }
 
-function client(): Client {
-  if (!globalThis.__nexusClient) {
-    const url = process.env.DATABASE_URL || "file:./data/nexus-hrms.db";
-    if (url.startsWith("file:")) {
-      const dir = path.dirname(url.slice("file:".length));
-      if (dir && dir !== "." && !fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    }
-    globalThis.__nexusClient = createClient({ url, authToken: process.env.DATABASE_AUTH_TOKEN, intMode: "number" });
+/**
+ * Pick the right libSQL client at runtime:
+ *  - local dev (file: URL) → native `@libsql/client` (supports a local SQLite file)
+ *  - production (Turso libsql:// URL) → pure-JS `@libsql/client/web` over HTTP,
+ *    so the serverless bundle carries NO native binary (keeps it small + portable).
+ */
+async function makeClient(): Promise<Client> {
+  const url = process.env.DATABASE_URL || "file:./data/nexus-hrms.db";
+  if (url.startsWith("file:")) {
+    const dir = path.dirname(url.slice("file:".length));
+    if (dir && dir !== "." && !fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const { createClient } = await import("@libsql/client");
+    return createClient({ url, intMode: "number" });
   }
-  return globalThis.__nexusClient;
+  const { createClient } = await import("@libsql/client/web");
+  return createClient({ url, authToken: process.env.DATABASE_AUTH_TOKEN, intMode: "number" });
+}
+
+function client(): Promise<Client> {
+  if (!globalThis.__nexusClientP) globalThis.__nexusClientP = makeClient();
+  return globalThis.__nexusClientP;
 }
 
 /** Run a write transaction. NOTE: callers go through the public `tx` which ensures the schema first. */
 async function txRaw<T>(fn: (q: Q) => Promise<T>): Promise<T> {
-  const t = await client().transaction("write");
+  const t = await (await client()).transaction("write");
   try {
     const res = await fn(wrap((stmt) => t.execute(stmt)));
     await t.commit();
@@ -214,7 +225,7 @@ async function txRaw<T>(fn: (q: Q) => Promise<T>): Promise<T> {
 }
 
 async function init(): Promise<void> {
-  const c = client();
+  const c = await client();
   await c.executeMultiple(SCHEMA);
   const q = wrap((stmt) => c.execute(stmt));
   const count = await q.get<{ c: number }>("SELECT COUNT(*) AS c FROM employees");
@@ -231,7 +242,7 @@ async function init(): Promise<void> {
 async function ready(): Promise<Q> {
   if (!globalThis.__nexusReady) globalThis.__nexusReady = init();
   await globalThis.__nexusReady;
-  return wrap((stmt) => client().execute(stmt));
+  return wrap(async (stmt) => (await client()).execute(stmt));
 }
 
 /* ---- public API (all async) ---- */
