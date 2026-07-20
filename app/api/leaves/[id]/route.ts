@@ -7,7 +7,7 @@ import { canReview, deptOf } from "@/lib/policy";
 type Ctx = { params: Promise<{ id: string }> };
 
 export async function PATCH(req: NextRequest, ctx: Ctx) {
-  const me = await requireAuth();
+  const me = await requireAuth(req);
   if (isErr(me)) return me;
   const { id } = await ctx.params;
   const { action, note } = await req.json().catch(() => ({}));

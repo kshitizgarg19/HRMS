@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Palmtree, Send, RotateCcw, ListChecks, XCircle } from "lucide-react";
 import { api } from "@/lib/api";
+import { useData } from "@/lib/swr";
 import { fmtDate, todayStr, workingDays, isWeekend } from "@/lib/format";
 import { Badge, Button, Card, ConfirmModal, DataTable, Field, Input, PageHeader, PageLoader, PersonCell, ProgressBar, Select, Textarea, useToast, cn } from "@/components/ui";
 import type { LeaveBalance, LeaveRequest, LeaveType } from "@/lib/types";
@@ -24,14 +25,11 @@ const TYPE_COLORS: Record<string, string> = {
 const EMPTY = { leave_type_id: "", from_date: todayStr(), to_date: todayStr(), half: "none", reason: "", responsible_id: "" };
 
 export default function LeavePage() {
-  const [data, setData] = useState<LeaveData | null>(null);
+  const { data, reload } = useData<LeaveData>("/api/leaves");
   const [form, setForm] = useState(EMPTY);
   const [busy, setBusy] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<LeaveRequest | null>(null);
   const toast = useToast();
-
-  const load = () => api<LeaveData>("/api/leaves").then(setData).catch(() => {});
-  useEffect(() => { load(); }, []);
 
   const estDays = useMemo(() => {
     if (!form.from_date || !form.to_date || form.to_date < form.from_date) return 0;
@@ -57,7 +55,7 @@ export default function LeavePage() {
       });
       toast.push("success", `Leave request submitted for ${res.days} day(s) — pending approval`);
       setForm(EMPTY);
-      await load();
+      await reload();
     } catch (e) {
       toast.push("error", e instanceof Error ? e.message : "Failed to submit");
     } finally {
@@ -72,7 +70,7 @@ export default function LeavePage() {
       await api(`/api/leaves/${cancelTarget.id}`, { method: "PATCH", body: JSON.stringify({ action: "cancel" }) });
       toast.push("success", "Request cancelled");
       setCancelTarget(null);
-      await load();
+      await reload();
     } catch (e) {
       toast.push("error", e instanceof Error ? e.message : "Failed to cancel");
     } finally {
@@ -115,7 +113,7 @@ export default function LeavePage() {
             <Field label="Leave Type" required>
               <Select value={form.leave_type_id} onChange={(e) => setForm({ ...form, leave_type_id: e.target.value })}>
                 <option value="">Select leave type…</option>
-                {data.types.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                {data.types.filter((t) => data.balances.some((b) => b.leave_type_id === t.id)).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
               </Select>
             </Field>
             <div className="grid grid-cols-2 gap-4">
@@ -131,7 +129,7 @@ export default function LeavePage() {
                   </label>
                 ))}
               </div>
-              <span className={cn("rounded-full px-3 py-1 text-xs font-extrabold", estDays > 0 ? "bg-indigo-100 text-indigo-700 dark:text-indigo-300" : "bg-rose-100 text-rose-600 dark:text-rose-400")}>
+              <span className={cn("rounded-full px-3 py-1 text-xs font-extrabold", estDays > 0 ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300" : "bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400")}>
                 {estDays} day{estDays === 1 ? "" : "s"}
               </span>
             </div>

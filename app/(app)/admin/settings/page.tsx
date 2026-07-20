@@ -1,9 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Settings2, Building2, Plus, Pencil, Trash2, Workflow, Palmtree, Crown, ShieldCheck } from "lucide-react";
+import { Settings2, Building2, Plus, Pencil, Trash2, Workflow, Palmtree, Crown, ShieldCheck, CalendarClock, RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
-import { Badge, Button, Card, ConfirmModal, DataTable, Field, Input, Modal, PageHeader, PageLoader, Select, useToast } from "@/components/ui";
+import { Badge, Button, Card, ConfirmModal, DataTable, Field, Input, Modal, PageHeader, PageLoader, Select, useToast, cn } from "@/components/ui";
 import type { Department } from "@/lib/types";
 
 interface LeaveTypeRow {
@@ -11,6 +11,10 @@ interface LeaveTypeRow {
   name: string;
   annual_quota: number;
   paid: number;
+  carry_forward: number;
+  carry_cap: number;
+  encashable: number;
+  scope: string | null;
   request_count: number;
 }
 
@@ -40,8 +44,9 @@ export default function OrgSettingsPage() {
   const [renameVal, setRenameVal] = useState("");
   const [delDept, setDelDept] = useState<Department | null>(null);
   const [typeModal, setTypeModal] = useState<LeaveTypeRow | "new" | null>(null);
-  const [typeForm, setTypeForm] = useState({ name: "", annual_quota: "0", paid: true, sync: false });
+  const [typeForm, setTypeForm] = useState({ name: "", annual_quota: "0", paid: true, sync: false, carry_forward: false, carry_cap: "0", encashable: false, scope: [] as string[] });
   const [delType, setDelType] = useState<LeaveTypeRow | null>(null);
+  const [policyConfirm, setPolicyConfirm] = useState<null | "carry_forward" | "apply_policy">(null);
 
   const load = useCallback(() => {
     api<{ rows: Department[] }>("/api/departments").then((d) => setDepartments(d.rows)).catch(() => {});
@@ -95,13 +100,30 @@ export default function OrgSettingsPage() {
 
   const openType = (t: LeaveTypeRow | "new") => {
     setTypeModal(t);
-    setTypeForm(t === "new" ? { name: "", annual_quota: "0", paid: true, sync: true } : { name: t.name, annual_quota: String(t.annual_quota), paid: !!t.paid, sync: false });
+    setTypeForm(
+      t === "new"
+        ? { name: "", annual_quota: "0", paid: true, sync: true, carry_forward: false, carry_cap: "0", encashable: false, scope: [] as string[] }
+        : {
+            name: t.name, annual_quota: String(t.annual_quota), paid: !!t.paid, sync: false,
+            carry_forward: !!t.carry_forward, carry_cap: String(t.carry_cap ?? 0), encashable: !!t.encashable,
+            scope: t.scope ? (JSON.parse(t.scope) as string[]) : [],
+          }
+    );
   };
 
+  const toggleScope = (dept: string) =>
+    setTypeForm((f) => ({ ...f, scope: f.scope.includes(dept) ? f.scope.filter((d) => d !== dept) : [...f.scope, dept] }));
+
+  const runPolicyOp = (action: "carry_forward" | "apply_policy", okMsg: string) =>
+    run(() => api("/api/leave-policy", { method: "POST", body: JSON.stringify({ action }) }), okMsg);
+
   const saveType = () => {
-    const payload = { name: typeForm.name, annual_quota: Number(typeForm.annual_quota), paid: typeForm.paid, sync: typeForm.sync };
+    const payload = {
+      name: typeForm.name, annual_quota: Number(typeForm.annual_quota), paid: typeForm.paid, sync: typeForm.sync,
+      carry_forward: typeForm.carry_forward, carry_cap: Number(typeForm.carry_cap) || 0, encashable: typeForm.encashable, scope: typeForm.scope,
+    };
     if (typeModal === "new") {
-      run(() => api("/api/leave-types", { method: "POST", body: JSON.stringify(payload) }), "Leave type created and allocated to everyone").then((ok) => ok && setTypeModal(null));
+      run(() => api("/api/leave-types", { method: "POST", body: JSON.stringify(payload) }), "Leave type created").then((ok) => ok && setTypeModal(null));
     } else if (typeModal) {
       run(() => api(`/api/leave-types/${typeModal.id}`, { method: "PUT", body: JSON.stringify(payload) }), "Leave type updated").then((ok) => ok && setTypeModal(null));
     }
@@ -158,7 +180,7 @@ export default function OrgSettingsPage() {
               },
             ]}
           />
-          <p className="mt-3 rounded-xl bg-indigo-50/60 px-4 py-2.5 text-xs leading-relaxed text-indigo-700 dark:text-indigo-300">
+          <p className="mt-3 rounded-xl bg-indigo-50/60 dark:bg-indigo-500/10 px-4 py-2.5 text-xs leading-relaxed text-indigo-700 dark:text-indigo-300">
             👑 An HOD gets an <b>Approvals</b> inbox scoped to their department when a workflow below is set to “Dept HOD + HR & Admin” — even if they&apos;re a regular employee.
           </p>
         </Card>
@@ -194,6 +216,16 @@ export default function OrgSettingsPage() {
               { key: "name", header: "Leave Type", render: (t) => <span className="text-sm font-extrabold text-slate-800 dark:text-slate-100">{t.name}</span> },
               { key: "quota", header: "Annual Quota", render: (t) => <span className="font-bold">{t.annual_quota} days</span> },
               { key: "paid", header: "Pay", render: (t) => <Badge tone={t.paid ? "Approved" : "Cancelled"}>{t.paid ? "Paid" : "Unpaid"}</Badge> },
+              {
+                key: "rules", header: "Rules",
+                render: (t) => (
+                  <span className="flex flex-wrap gap-1">
+                    {!!t.carry_forward && <Badge tone="Public">↻ carry {t.carry_cap || "∞"}</Badge>}
+                    {!!t.encashable && <Badge tone="Approved">₹ encash</Badge>}
+                    <Badge tone="EMPLOYEE">{t.scope ? `${(JSON.parse(t.scope) as string[]).length} dept` : "all"}</Badge>
+                  </span>
+                ),
+              },
               { key: "usage", header: "Requests", render: (t) => <span className="text-xs font-semibold text-slate-400 dark:text-slate-500">{t.request_count}</span> },
               {
                 key: "act", header: "", className: "text-right",
@@ -206,6 +238,30 @@ export default function OrgSettingsPage() {
               },
             ]}
           />
+        </Card>
+
+        {/* Year-end & policy operations */}
+        <Card title="Year-End & Leave Policy" icon={<CalendarClock size={16} />} className="xl:col-span-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="flex flex-col justify-between rounded-2xl border border-slate-100 dark:border-slate-800 p-4">
+              <div>
+                <p className="flex items-center gap-2 text-sm font-extrabold text-slate-800 dark:text-slate-100"><RefreshCw size={15} className="text-indigo-500" /> Run Year-End Carry-Forward</p>
+                <p className="mt-1 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+                  Rolls every employee into a fresh year: unused balance of carry-forward leave types moves over (capped), everything else resets to the annual quota. Used days become 0.
+                </p>
+              </div>
+              <Button variant="outline" size="sm" className="mt-3 self-start" onClick={() => setPolicyConfirm("carry_forward")}>Run Carry-Forward</Button>
+            </div>
+            <div className="flex flex-col justify-between rounded-2xl border border-slate-100 dark:border-slate-800 p-4">
+              <div>
+                <p className="flex items-center gap-2 text-sm font-extrabold text-slate-800 dark:text-slate-100"><ShieldCheck size={15} className="text-emerald-500" /> Apply Policies to Everyone</p>
+                <p className="mt-1 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+                  Reconciles each employee&apos;s leave balances to their department&apos;s policy — adds any newly-applicable leave types and removes unused ones that no longer apply.
+                </p>
+              </div>
+              <Button variant="outline" size="sm" className="mt-3 self-start" onClick={() => setPolicyConfirm("apply_policy")}>Apply Policies</Button>
+            </div>
+          </div>
         </Card>
       </div>
 
@@ -233,9 +289,41 @@ export default function OrgSettingsPage() {
               </Select>
             </Field>
           </div>
+
+          {/* Carry-forward + encashment */}
+          <div className="grid grid-cols-1 gap-3 rounded-xl border border-slate-100 dark:border-slate-800 p-3 sm:grid-cols-2">
+            <label className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-600 dark:text-slate-300">
+              <input type="checkbox" checked={typeForm.carry_forward} onChange={(e) => setTypeForm({ ...typeForm, carry_forward: e.target.checked })} className="size-4 accent-indigo-600" />
+              Carry-forward unused at year-end
+            </label>
+            <Field label="Carry cap (max days)">
+              <Input type="number" min="0" value={typeForm.carry_cap} disabled={!typeForm.carry_forward} onChange={(e) => setTypeForm({ ...typeForm, carry_cap: e.target.value })} />
+            </Field>
+            <label className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-600 dark:text-slate-300 sm:col-span-2">
+              <input type="checkbox" checked={typeForm.encashable} onChange={(e) => setTypeForm({ ...typeForm, encashable: e.target.checked })} className="size-4 accent-emerald-600" />
+              Encashable — unused days can be paid out (per-day = gross ÷ 30)
+            </label>
+          </div>
+
+          {/* Department scope (Feature: per-team policy) */}
+          <Field label="Applies to departments" hint="None selected = applies to everyone">
+            <div className="flex flex-wrap gap-1.5">
+              {departments!.map((d) => {
+                const on = typeForm.scope.includes(d.name);
+                return (
+                  <button key={d.id} type="button" onClick={() => toggleScope(d.name)}
+                    className={cn("rounded-full px-3 py-1 text-xs font-bold ring-1 transition",
+                      on ? "bg-indigo-600 text-white ring-indigo-600" : "bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-300 ring-slate-300 dark:ring-slate-700 hover:ring-indigo-400")}>
+                    {d.name}
+                  </button>
+                );
+              })}
+            </div>
+          </Field>
+
           <label className="flex cursor-pointer items-center gap-2 rounded-xl bg-amber-50 dark:bg-amber-500/15 px-4 py-3 text-xs font-bold text-amber-700 dark:text-amber-300">
             <input type="checkbox" checked={typeForm.sync} onChange={(e) => setTypeForm({ ...typeForm, sync: e.target.checked })} className="size-4 accent-amber-600" />
-            Apply this quota to every employee&apos;s balance now (used days are kept)
+            Sync now: align every applicable employee&apos;s balance to this quota &amp; scope (used days kept)
           </label>
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setTypeModal(null)}>Cancel</Button>
@@ -251,6 +339,18 @@ export default function OrgSettingsPage() {
       <ConfirmModal
         open={!!delType} onClose={() => setDelType(null)} onConfirm={removeType} loading={busy} danger
         title={`Delete "${delType?.name}"?`} message="This removes the leave type and everyone's balance for it. Only possible when no requests ever used it." confirmLabel="Delete"
+      />
+      <ConfirmModal
+        open={!!policyConfirm} onClose={() => setPolicyConfirm(null)} loading={busy}
+        onConfirm={() => {
+          if (policyConfirm === "carry_forward") runPolicyOp("carry_forward", "Year-end carry-forward complete ✓").then((ok) => ok && setPolicyConfirm(null));
+          else runPolicyOp("apply_policy", "Leave policies applied to everyone ✓").then((ok) => ok && setPolicyConfirm(null));
+        }}
+        title={policyConfirm === "carry_forward" ? "Run year-end carry-forward?" : "Apply leave policies to everyone?"}
+        message={policyConfirm === "carry_forward"
+          ? "This resets every employee's leave balances for a new year (carry-forward types roll over up to their cap; used days become 0). Do this once a year."
+          : "This re-aligns every employee's leave balances to their department's policy — adds newly-applicable types and removes unused non-applicable ones."}
+        confirmLabel={policyConfirm === "carry_forward" ? "Run Carry-Forward" : "Apply Policies"}
       />
     </div>
   );

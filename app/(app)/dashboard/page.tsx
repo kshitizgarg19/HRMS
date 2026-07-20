@@ -7,6 +7,7 @@ import {
   Cake, Award, PartyPopper, Megaphone, Activity, UserPlus, ListTodo, Receipt, ArrowRight, Sun,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { useData } from "@/lib/swr";
 import { fmtINR, fmtDate, fmtTime, MONTHS } from "@/lib/format";
 import { Card, StatCard, Badge, Button, Avatar, EmptyState, PageLoader, useToast, cn } from "@/components/ui";
 import { LineChart, Donut, HBarList, Sparkline } from "@/components/charts";
@@ -47,12 +48,9 @@ function greeting() {
 }
 
 export default function DashboardPage() {
-  const [data, setData] = useState<DashData | null>(null);
+  const { data, reload } = useData<DashData>("/api/dashboard");
   const [acting, setActing] = useState(false);
   const toast = useToast();
-
-  const load = useCallback(() => api<DashData>("/api/dashboard").then(setData).catch(() => {}), []);
-  useEffect(() => { load(); }, [load]);
 
   if (!data) return <PageLoader />;
   const { me, mine, org, checkin } = data;
@@ -63,7 +61,7 @@ export default function DashboardPage() {
     try {
       await api("/api/attendance", { method: "POST", body: JSON.stringify({ action }) });
       toast.push("success", action === "in" ? "Checked in — have a great day!" : "Checked out. See you tomorrow!");
-      await load();
+      await reload();
     } catch (e) {
       toast.push("error", e instanceof Error ? e.message : "Something went wrong");
     } finally {
@@ -82,6 +80,9 @@ export default function DashboardPage() {
         <div className="float-b absolute right-40 top-20 hidden size-14 rounded-full border border-white/10 md:block" />
         <div className="relative flex flex-wrap items-center justify-between gap-6">
           <div>
+            <span className="mb-2.5 inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-[11px] font-extrabold uppercase tracking-[0.16em] text-indigo-100 ring-1 ring-white/20">
+              {me.role === "ADMIN" ? "🛡️ Admin Console" : me.role === "HR" ? "💼 HR Workspace" : "👤 Employee Dashboard"}
+            </span>
             <p className="hero-shimmer text-2xl font-extrabold tracking-tight sm:text-3xl">
               {greeting()}, {me.name.split(" ")[0]} 👋
             </p>
@@ -318,7 +319,7 @@ export default function DashboardPage() {
             action={<Link href="/announcements" className="flex items-center gap-1 text-xs font-bold text-indigo-600 dark:text-indigo-300 hover:text-indigo-700">All <ArrowRight size={12} /></Link>}>
             <ul className="space-y-4">
               {data.announcements.map((a) => (
-                <li key={a.id} className={cn("rounded-xl border p-4", a.pinned ? "border-amber-200 bg-amber-50/50" : "border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40")}>
+                <li key={a.id} className={cn("rounded-xl border p-4", a.pinned ? "border-amber-200 bg-amber-50/50 dark:border-amber-500/30 dark:bg-amber-500/10" : "border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40")}>
                   <p className="flex items-center gap-2 text-sm font-bold text-slate-800 dark:text-slate-100">
                     {a.pinned ? "📌" : "📣"} {a.title}
                   </p>

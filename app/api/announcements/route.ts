@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { all, run } from "@/lib/db";
 import { requireAuth, isErr, bad } from "@/lib/auth";
 
-export async function GET() {
-  const me = await requireAuth();
+export async function GET(req: NextRequest) {
+  const me = await requireAuth(req);
   if (isErr(me)) return me;
   const rows = await all(
     `SELECT a.*, e.name AS author_name, e.avatar_color AS author_color, e.designation AS author_designation
@@ -14,7 +14,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const me = await requireAuth(["HR", "ADMIN"]);
+  const me = await requireAuth(req, ["HR", "ADMIN"]);
   if (isErr(me)) return me;
   const { title, body, pinned } = await req.json().catch(() => ({}));
   if (!title || !body) return bad("Title and message are required");

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ListTodo, Plus, Trash2, ArrowRight, ArrowLeft, CalendarClock, Flag } from "lucide-react";
 import { api } from "@/lib/api";
+import { useData } from "@/lib/swr";
 import { fmtDate, todayStr } from "@/lib/format";
 import { Avatar, Badge, Button, Card, ConfirmModal, Field, Input, Modal, PageHeader, PageLoader, Select, Textarea, useToast, cn } from "@/components/ui";
 import { useMe } from "@/components/shell";
@@ -21,19 +22,13 @@ const EMPTY = { title: "", category: "General", description: "", assigned_to: ""
 export default function TasksPage() {
   const me = useMe();
   const isMgmt = me.role !== "EMPLOYEE";
-  const [data, setData] = useState<{ rows: TaskRow[]; assignees: { id: number; name: string }[] } | null>(null);
   const [scope, setScope] = useState<"mine" | "all">("mine");
+  const { data, reload } = useData<{ rows: TaskRow[]; assignees: { id: number; name: string }[] }>(`/api/tasks${scope === "all" ? "?all=1" : ""}`);
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState(EMPTY);
   const [busy, setBusy] = useState(false);
   const [confirmDel, setConfirmDel] = useState<TaskRow | null>(null);
   const toast = useToast();
-
-  const load = (s = scope) =>
-    api<{ rows: TaskRow[]; assignees: { id: number; name: string }[] }>(`/api/tasks${s === "all" ? "?all=1" : ""}`)
-      .then(setData)
-      .catch(() => {});
-  useEffect(() => { load(scope); }, [scope]);
 
   const grouped = useMemo(() => {
     const g: Record<string, TaskRow[]> = { "To Do": [], "In Progress": [], Done: [] };
@@ -49,7 +44,7 @@ export default function TasksPage() {
     if (!next) return;
     try {
       await api(`/api/tasks/${t.id}`, { method: "PATCH", body: JSON.stringify({ status: next }) });
-      await load();
+      await reload();
       if (next === "Done") toast.push("success", `"${t.title}" marked done 🎉`);
     } catch (e) {
       toast.push("error", e instanceof Error ? e.message : "Failed to update");
@@ -64,7 +59,7 @@ export default function TasksPage() {
       toast.push("success", "Task assigned");
       setModal(false);
       setForm(EMPTY);
-      await load();
+      await reload();
     } catch (e) {
       toast.push("error", e instanceof Error ? e.message : "Failed to create");
     } finally {
@@ -79,7 +74,7 @@ export default function TasksPage() {
       await api(`/api/tasks/${confirmDel.id}`, { method: "DELETE" });
       toast.push("success", "Task deleted");
       setConfirmDel(null);
-      await load();
+      await reload();
     } catch (e) {
       toast.push("error", e instanceof Error ? e.message : "Failed to delete");
     } finally {

@@ -4,7 +4,7 @@ import { requireAuth, isErr, bad, forbidden } from "@/lib/auth";
 import { approvalPolicy, hodDepartments } from "@/lib/policy";
 
 export async function GET(req: NextRequest) {
-  const me = await requireAuth();
+  const me = await requireAuth(req);
   if (isErr(me)) return me;
   const sp = req.nextUrl.searchParams;
   const all = sp.get("all") === "1";
@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const me = await requireAuth();
+  const me = await requireAuth(req);
   if (isErr(me)) return me;
   const { date, location, tasks, hours } = await req.json().catch(() => ({}));
   if (!date || !tasks || !hours) return bad("Date, task description and hours are required");

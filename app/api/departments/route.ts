@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { all, run } from "@/lib/db";
 import { requireAuth, isErr, bad } from "@/lib/auth";
 
-export async function GET() {
-  const me = await requireAuth();
+export async function GET(req: NextRequest) {
+  const me = await requireAuth(req);
   if (isErr(me)) return me;
   const rows = await all(
     `SELECT d.id, d.name, d.hod_id, h.name AS hod_name,
@@ -15,7 +15,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const me = await requireAuth(["ADMIN"]);
+  const me = await requireAuth(req, ["ADMIN"]);
   if (isErr(me)) return me;
   const { name } = await req.json().catch(() => ({}));
   const clean = String(name || "").trim();

@@ -2,15 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { all, run } from "@/lib/db";
 import { requireAuth, isErr, bad } from "@/lib/auth";
 
-export async function GET() {
-  const me = await requireAuth();
+export async function GET(req: NextRequest) {
+  const me = await requireAuth(req);
   if (isErr(me)) return me;
   const rows = await all("SELECT * FROM holidays ORDER BY date");
   return NextResponse.json({ rows });
 }
 
 export async function POST(req: NextRequest) {
-  const me = await requireAuth(["HR", "ADMIN"]);
+  const me = await requireAuth(req, ["HR", "ADMIN"]);
   if (isErr(me)) return me;
   const { name, date, type, description } = await req.json().catch(() => ({}));
   if (!name || !date) return bad("Name and date are required");

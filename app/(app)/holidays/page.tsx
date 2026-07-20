@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { PartyPopper, Plus, Pencil, Trash2, CalendarDays } from "lucide-react";
 import { api } from "@/lib/api";
+import { useData } from "@/lib/swr";
 import { todayStr, MONTHS, fmtDateLong } from "@/lib/format";
 import { Badge, Button, Card, ConfirmModal, Field, Input, Modal, PageHeader, PageLoader, Select, useToast, cn } from "@/components/ui";
 import { useMe } from "@/components/shell";
@@ -13,16 +14,14 @@ const EMPTY = { name: "", date: "", type: "Public", description: "" };
 export default function HolidaysPage() {
   const me = useMe();
   const isMgmt = me.role !== "EMPLOYEE";
-  const [rows, setRows] = useState<Holiday[] | null>(null);
+  const { data, reload } = useData<{ rows: Holiday[] }>("/api/holidays");
+  const rows = data?.rows;
   const [modal, setModal] = useState(false);
   const [editing, setEditing] = useState<Holiday | null>(null);
   const [form, setForm] = useState(EMPTY);
   const [confirmDel, setConfirmDel] = useState<Holiday | null>(null);
   const [busy, setBusy] = useState(false);
   const toast = useToast();
-
-  const load = () => api<{ rows: Holiday[] }>("/api/holidays").then((d) => setRows(d.rows)).catch(() => {});
-  useEffect(() => { load(); }, []);
 
   const { upcoming, past } = useMemo(() => {
     const t = todayStr();
@@ -49,7 +48,7 @@ export default function HolidaysPage() {
         toast.push("success", "Holiday added to the calendar");
       }
       setModal(false);
-      await load();
+      await reload();
     } catch (e) {
       toast.push("error", e instanceof Error ? e.message : "Failed to save");
     } finally {
@@ -64,7 +63,7 @@ export default function HolidaysPage() {
       await api(`/api/holidays/${confirmDel.id}`, { method: "DELETE" });
       toast.push("success", "Holiday removed");
       setConfirmDel(null);
-      await load();
+      await reload();
     } catch (e) {
       toast.push("error", e instanceof Error ? e.message : "Failed to delete");
     } finally {

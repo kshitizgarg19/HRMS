@@ -116,7 +116,7 @@ export function Card({
   return (
     <section
       className={cn(
-        "card-glow rounded-2xl border border-slate-200/80 bg-white shadow-[0_1px_3px_rgba(15,23,42,.05)] dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/20",
+        "lux-card rounded-2xl border border-slate-200/70 dark:border-slate-800/70",
         className
       )}
     >
@@ -164,7 +164,7 @@ export function StatCard({
     <div
       onClick={onClick}
       className={cn(
-        "group card-lift relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-5 shadow-[0_1px_3px_rgba(15,23,42,.05)] dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/20",
+        "group card-lift lux-card relative overflow-hidden rounded-2xl border border-slate-200/70 p-5 dark:border-slate-800/70",
         onClick && "cursor-pointer"
       )}
     >
@@ -200,6 +200,7 @@ const BADGE_TONES: Record<string, string> = {
   Present: "bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/30",
   Absent: "bg-rose-50 text-rose-700 ring-rose-200 dark:bg-rose-500/15 dark:text-rose-300 dark:ring-rose-500/30",
   Leave: "bg-sky-50 text-sky-700 ring-sky-200 dark:bg-sky-500/15 dark:text-sky-300 dark:ring-sky-500/30",
+  "On Duty": "bg-teal-50 text-teal-700 ring-teal-200 dark:bg-teal-500/15 dark:text-teal-300 dark:ring-teal-500/30",
   "Half Day": "bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-amber-500/30",
   Holiday: "bg-violet-50 text-violet-700 ring-violet-200 dark:bg-violet-500/15 dark:text-violet-300 dark:ring-violet-500/30",
   Active: "bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/30",
@@ -207,6 +208,7 @@ const BADGE_TONES: Record<string, string> = {
   Exited: "bg-slate-100 text-slate-500 ring-slate-200 dark:bg-slate-700/50 dark:text-slate-400 dark:ring-slate-600",
   Paid: "bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/30",
   Generated: "bg-sky-50 text-sky-700 ring-sky-200 dark:bg-sky-500/15 dark:text-sky-300 dark:ring-sky-500/30",
+  Draft: "bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-amber-500/30",
   "To Do": "bg-slate-100 text-slate-600 ring-slate-200 dark:bg-slate-700/50 dark:text-slate-300 dark:ring-slate-600",
   "In Progress": "bg-sky-50 text-sky-700 ring-sky-200 dark:bg-sky-500/15 dark:text-sky-300 dark:ring-sky-500/30",
   Done: "bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/30",
@@ -297,16 +299,18 @@ export function Modal({
   // immune to ancestor transforms (page transitions) that would otherwise trap a fixed element.
   return createPortal(
     <div
-      className="modal-backdrop fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto bg-slate-950/50 p-4 backdrop-blur-xl sm:items-center sm:p-6 dark:bg-black/65"
+      className="modal-backdrop fixed inset-0 z-[80] flex items-end justify-center overflow-y-auto bg-slate-950/50 p-0 backdrop-blur-xl sm:items-center sm:p-6 dark:bg-black/65"
       onMouseDown={onClose}
     >
       <div
         className={cn(
-          "modal-panel relative flex max-h-[calc(100dvh-2rem)] w-full flex-col overflow-hidden rounded-3xl bg-white shadow-[0_40px_90px_-25px_rgba(2,6,23,0.55)] ring-1 ring-black/5 dark:bg-slate-900 dark:ring-white/10",
+          "modal-panel relative flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-3xl bg-white shadow-[0_40px_90px_-25px_rgba(2,6,23,0.55)] ring-1 ring-black/5 sm:max-h-[calc(100dvh-2rem)] sm:rounded-3xl dark:bg-slate-900 dark:ring-white/10",
           width
         )}
         onMouseDown={(e) => e.stopPropagation()}
       >
+        {/* drag-handle — reads as a native bottom sheet on phones */}
+        <div className="mx-auto mt-2.5 h-1.5 w-10 shrink-0 rounded-full bg-slate-300 dark:bg-slate-700 sm:hidden" />
         <div className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-100 px-6 py-4 dark:border-slate-800">
           <div>
             <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">{title}</h3>
@@ -319,7 +323,7 @@ export function Modal({
             <X size={18} />
           </button>
         </div>
-        <div className="overflow-y-auto px-6 py-5">{children}</div>
+        <div className="overflow-y-auto px-6 py-5 pb-[max(1.25rem,env(safe-area-inset-bottom))]">{children}</div>
       </div>
     </div>,
     document.body
@@ -403,42 +407,70 @@ export function DataTable<T>({
   keyFor: (row: T, i: number) => string | number;
   empty?: React.ReactNode;
 }) {
+  const hasHeader = (h: React.ReactNode) => (typeof h === "string" ? h.trim().length > 0 : h != null);
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[640px] border-collapse text-left">
-        <thead>
-          <tr className="border-b border-slate-200 dark:border-slate-700">
-            {columns.map((c) => (
-              <th key={c.key} className={cn("px-3 py-2.5 text-[11px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500", c.className)}>
-                {c.header}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.length === 0 && (
-            <tr>
-              <td colSpan={columns.length} className="px-3 py-12">
-                {empty || <EmptyState title="Nothing here yet" />}
-              </td>
-            </tr>
-          )}
-          {rows.map((r, i) => (
-            <tr
-              key={keyFor(r, i)}
-              className="row-enter border-b border-slate-100 transition-colors duration-200 last:border-0 hover:bg-indigo-50/40 dark:border-slate-800 dark:hover:bg-slate-800/50"
-              style={{ animationDelay: `${Math.min(i, 14) * 45}ms` }}
-            >
+    <>
+      {/* Desktop / tablet: classic table */}
+      <div className="hidden overflow-x-auto md:block">
+        <table className="w-full min-w-[640px] border-collapse text-left">
+          <thead>
+            <tr className="border-b border-slate-200 dark:border-slate-700">
               {columns.map((c) => (
-                <td key={c.key} className={cn("px-3 py-3 text-sm text-slate-700 dark:text-slate-300", c.className)}>
-                  {c.render(r, i)}
-                </td>
+                <th key={c.key} className={cn("px-3 py-2.5 text-[11px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500", c.className)}>
+                  {c.header}
+                </th>
               ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody>
+            {rows.length === 0 && (
+              <tr>
+                <td colSpan={columns.length} className="px-3 py-12">
+                  {empty || <EmptyState title="Nothing here yet" />}
+                </td>
+              </tr>
+            )}
+            {rows.map((r, i) => (
+              <tr
+                key={keyFor(r, i)}
+                className="row-enter border-b border-slate-100 transition-colors duration-200 last:border-0 hover:bg-indigo-50/40 dark:border-slate-800 dark:hover:bg-slate-800/50"
+                style={{ animationDelay: `${Math.min(i, 14) * 45}ms` }}
+              >
+                {columns.map((c) => (
+                  <td key={c.key} className={cn("px-3 py-3 text-sm text-slate-700 dark:text-slate-300", c.className)}>
+                    {c.render(r, i)}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Mobile: each row becomes a tappable card (first column = title, rest = label/value rows, action buttons full-width) */}
+      <div className="space-y-2.5 md:hidden">
+        {rows.length === 0 && <div className="py-8">{empty || <EmptyState title="Nothing here yet" />}</div>}
+        {rows.map((r, i) => (
+          <div
+            key={keyFor(r, i)}
+            className="row-enter rounded-2xl border border-slate-200/80 bg-white p-3.5 shadow-[0_1px_3px_rgba(15,23,42,.04)] dark:border-slate-800 dark:bg-slate-900/60"
+            style={{ animationDelay: `${Math.min(i, 10) * 45}ms` }}
+          >
+            {columns.map((c, ci) => {
+              const content = c.render(r, i);
+              if (ci === 0) return <div key={c.key} className="mb-1">{content}</div>;
+              if (!hasHeader(c.header)) return <div key={c.key} className="mt-2.5 flex justify-end gap-2 border-t border-slate-50 pt-2.5 dark:border-slate-800/70">{content}</div>;
+              return (
+                <div key={c.key} className="flex items-center justify-between gap-3 border-t border-slate-50 py-1.5 dark:border-slate-800/70">
+                  <span className="shrink-0 text-[11px] font-bold uppercase tracking-wide text-slate-400 dark:text-slate-500">{c.header}</span>
+                  <span className="min-w-0 text-right text-sm text-slate-700 dark:text-slate-300">{content}</span>
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    </>
   );
 }
 
@@ -509,7 +541,7 @@ export function PageHeader({ title, subtitle, icon, actions }: { title: string; 
     <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
       <div className="flex items-center gap-3">
         {icon && (
-          <span className="group grid size-11 place-items-center rounded-2xl bg-gradient-to-br from-indigo-600 to-violet-600 text-white shadow-lg shadow-indigo-200 transition-all duration-300 hover:-rotate-6 hover:scale-105 hover:shadow-xl hover:shadow-indigo-300/60 dark:shadow-indigo-950/60">
+          <span className="lux-glow group grid size-11 place-items-center rounded-2xl bg-gradient-to-br from-indigo-600 via-violet-600 to-fuchsia-500 text-white transition-all duration-300 hover:-rotate-6 hover:scale-105">
             {icon}
           </span>
         )}
@@ -557,7 +589,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastCtx.Provider value={{ push }}>
       {children}
-      <div className="pointer-events-none fixed bottom-5 right-5 z-[100] flex w-80 flex-col gap-2">
+      <div className="pointer-events-none fixed inset-x-3 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-[100] flex flex-col gap-2 sm:inset-x-auto sm:bottom-5 sm:right-5 sm:w-80">
         {toasts.map((t) => (
           <div
             key={t.id}

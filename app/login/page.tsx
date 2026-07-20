@@ -1,14 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Sparkles, Eye, EyeOff, ShieldCheck, UserRound, Briefcase, Loader2, ArrowRight } from "lucide-react";
+import { Sparkles, Eye, EyeOff, Loader2, ArrowRight } from "lucide-react";
 import { api } from "@/lib/api";
-
-const DEMO = [
-  { label: "Admin", icon: <ShieldCheck size={14} />, id: "kshitiz@nexushr.in", pwd: "Admin@123", desc: "Full control" },
-  { label: "HR", icon: <Briefcase size={14} />, id: "priya@nexushr.in", pwd: "Hr@123", desc: "People ops" },
-  { label: "Employee", icon: <UserRound size={14} />, id: "ranjeet@nexushr.in", pwd: "Emp@123", desc: "Self service" },
-];
 
 const FEATURES = [
   "Attendance, timesheets & leave in one place",
@@ -24,12 +18,12 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const submit = async (e?: React.FormEvent, id = identifier, pwd = password) => {
+  const submit = async (e?: React.FormEvent) => {
     e?.preventDefault();
     setError("");
     setLoading(true);
     try {
-      await api("/api/auth/login", { method: "POST", body: JSON.stringify({ identifier: id, password: pwd }) });
+      await api("/api/auth/login", { method: "POST", body: JSON.stringify({ identifier, password }) });
       window.location.href = "/dashboard";
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
@@ -140,23 +134,9 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <div className="mt-8">
-            <p className="mb-3 text-center text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">Demo accounts — one-click sign in</p>
-            <div className="stagger-children grid grid-cols-3 gap-2">
-              {DEMO.map((d) => (
-                <button
-                  key={d.label}
-                  onClick={() => { setIdentifier(d.id); setPassword(d.pwd); submit(undefined, d.id, d.pwd); }}
-                  className="group chip-bounce rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 text-left hover:border-indigo-300 hover:shadow-lg hover:shadow-indigo-100 cursor-pointer"
-                >
-                  <span className="flex items-center gap-1.5 text-[13px] font-extrabold text-slate-800 dark:text-slate-100 transition-colors group-hover:text-indigo-700">
-                    {d.icon} {d.label}
-                  </span>
-                  <span className="mt-0.5 block text-[11px] font-medium text-slate-400 dark:text-slate-500">{d.desc}</span>
-                </button>
-              ))}
-            </div>
-          </div>
+          <p className="mt-8 text-center text-xs font-medium text-slate-400 dark:text-slate-500">
+            Trouble signing in? Contact your HR or system administrator.
+          </p>
         </div>
       </div>
     </div>

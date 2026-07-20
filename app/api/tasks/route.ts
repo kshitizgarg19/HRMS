@@ -3,7 +3,7 @@ import { all as sqlAll, run } from "@/lib/db";
 import { requireAuth, isErr, bad, forbidden } from "@/lib/auth";
 
 export async function GET(req: NextRequest) {
-  const me = await requireAuth();
+  const me = await requireAuth(req);
   if (isErr(me)) return me;
   const all = req.nextUrl.searchParams.get("all") === "1";
   if (all && me.role === "EMPLOYEE") return forbidden();
@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const me = await requireAuth(["HR", "ADMIN"]);
+  const me = await requireAuth(req, ["HR", "ADMIN"]);
   if (isErr(me)) return me;
   const { title, category, description, assigned_to, priority, duration, due_date } = await req.json().catch(() => ({}));
   if (!title || !assigned_to) return bad("Title and assignee are required");

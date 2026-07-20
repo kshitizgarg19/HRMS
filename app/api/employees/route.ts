@@ -3,11 +3,12 @@ import bcrypt from "bcryptjs";
 import { get, all, run } from "@/lib/db";
 import { requireAuth, isErr, bad } from "@/lib/auth";
 import { colorFor } from "@/lib/format";
+import { appliesToDept } from "@/lib/leave";
 
 const PUBLIC_FIELDS = "e.id, e.emp_code, e.name, e.designation, e.department, e.email, e.phone, e.city, e.work_location, e.join_date, e.status, e.avatar_color";
 
 export async function GET(req: NextRequest) {
-  const me = await requireAuth();
+  const me = await requireAuth(req);
   if (isErr(me)) return me;
   const sp = req.nextUrl.searchParams;
   const q = (sp.get("q") || "").trim();
@@ -50,7 +51,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const me = await requireAuth(["HR", "ADMIN"]);
+  const me = await requireAuth(req, ["HR", "ADMIN"]);
   if (isErr(me)) return me;
   const b = await req.json().catch(() => ({}));
   if (!b.name || !b.email) return bad("Name and email are required");
@@ -92,9 +93,13 @@ export async function POST(req: NextRequest) {
   );
 
   const id = Number(info.lastInsertRowid);
-  // Allocate standard leave balances
-  const types = await all<{ id: number; annual_quota: number }>("SELECT id, annual_quota FROM leave_types");
-  for (const t of types) await run("INSERT OR IGNORE INTO leave_balances (employee_id, leave_type_id, allocated, used) VALUES (?, ?, ?, 0)", id, t.id, t.annual_quota);
+  // Allocate leave balances — only the leave types that apply to this employee's department.
+  const empDept = b.department || null;
+  const types = await all<{ id: number; annual_quota: number; scope: string | null }>("SELECT id, annual_quota, scope FROM leave_types");
+  for (const t of types) {
+    if (!appliesToDept(t.scope, empDept)) continue;
+    await run("INSERT OR IGNORE INTO leave_balances (employee_id, leave_type_id, allocated, used) VALUES (?, ?, ?, 0)", id, t.id, t.annual_quota);
+  }
 
   return NextResponse.json({ ok: true, id, emp_code: code, password });
 }

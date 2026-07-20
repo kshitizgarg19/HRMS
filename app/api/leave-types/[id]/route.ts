@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { get, tx } from "@/lib/db";
 import { requireAuth, isErr, bad } from "@/lib/auth";
+import { parseScope, scopeToJson } from "@/lib/leave";
 
 type Ctx = { params: Promise<{ id: string }> };
 
 export async function PUT(req: NextRequest, ctx: Ctx) {
-  const me = await requireAuth(["ADMIN"]);
+  const me = await requireAuth(req, ["ADMIN"]);
   if (isErr(me)) return me;
   const { id } = await ctx.params;
-  const { name, annual_quota, paid, sync } = await req.json().catch(() => ({}));
+  const { name, annual_quota, paid, carry_forward, carry_cap, encashable, scope, sync } = await req.json().catch(() => ({}));
   const type = await get<{ id: number }>("SELECT * FROM leave_types WHERE id = ?", Number(id));
   if (!type) return bad("Leave type not found", 404);
 
@@ -20,19 +21,39 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
   const dupe = await get("SELECT id FROM leave_types WHERE lower(name) = lower(?) AND id != ?", clean, type.id);
   if (dupe) return bad("A leave type with that name already exists");
 
+  const scopeJson = scopeToJson(scope);
+  const list = parseScope(scopeJson);
+
   await tx(async (q) => {
-    await q.run("UPDATE leave_types SET name = ?, annual_quota = ?, paid = ? WHERE id = ?", clean, quota, paid ? 1 : 0, type.id);
+    await q.run(
+      "UPDATE leave_types SET name = ?, annual_quota = ?, paid = ?, carry_forward = ?, carry_cap = ?, encashable = ?, scope = ? WHERE id = ?",
+      clean, quota, paid ? 1 : 0, carry_forward ? 1 : 0, Number(carry_cap) || 0, encashable ? 1 : 0, scopeJson, type.id
+    );
     if (sync) {
-      // re-sync everyone's allocation to the new quota (used days are preserved)
+      // re-align allocations to the (possibly new) quota + department scope
       await q.run("UPDATE leave_balances SET allocated = ? WHERE leave_type_id = ?", quota, type.id);
-      await q.run("INSERT OR IGNORE INTO leave_balances (employee_id, leave_type_id, allocated, used) SELECT id, ?, ?, 0 FROM employees", type.id, quota);
+      if (list) {
+        await q.run(
+          `INSERT OR IGNORE INTO leave_balances (employee_id, leave_type_id, allocated, used)
+           SELECT id, ?, ?, 0 FROM employees WHERE department IN (${list.map(() => "?").join(",")})`,
+          type.id, quota, ...list
+        );
+        // drop balances for employees now outside the scope, but only if unused
+        await q.run(
+          `DELETE FROM leave_balances WHERE leave_type_id = ? AND used = 0
+           AND employee_id IN (SELECT id FROM employees WHERE department IS NULL OR department NOT IN (${list.map(() => "?").join(",")}))`,
+          type.id, ...list
+        );
+      } else {
+        await q.run("INSERT OR IGNORE INTO leave_balances (employee_id, leave_type_id, allocated, used) SELECT id, ?, ?, 0 FROM employees", type.id, quota);
+      }
     }
   });
   return NextResponse.json({ ok: true });
 }
 
 export async function DELETE(req: NextRequest, ctx: Ctx) {
-  const me = await requireAuth(["ADMIN"]);
+  const me = await requireAuth(req, ["ADMIN"]);
   if (isErr(me)) return me;
   const { id } = await ctx.params;
   const used = (await get<{ c: number }>("SELECT COUNT(*) c FROM leave_requests WHERE leave_type_id = ?", Number(id)))!;

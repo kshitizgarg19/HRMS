@@ -6,7 +6,7 @@ import { canReview, deptOf } from "@/lib/policy";
 type Ctx = { params: Promise<{ id: string }> };
 
 export async function PUT(req: NextRequest, ctx: Ctx) {
-  const me = await requireAuth();
+  const me = await requireAuth(req);
   if (isErr(me)) return me;
   const { id } = await ctx.params;
   const body = await req.json().catch(() => ({}));
@@ -30,15 +30,17 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
   if (row.status !== "Pending") return bad("Approved/rejected entries can't be edited");
   const { date, location, tasks, hours } = body;
   if (!date || !tasks || !hours) return bad("Date, tasks and hours are required");
+  const h = Number(hours);
+  if (isNaN(h) || h <= 0 || h > 24) return bad("Hours must be between 0.5 and 24");
   await run(
     "UPDATE timesheets SET date = ?, location = ?, tasks = ?, hours = ?, updated_at = datetime('now') WHERE id = ?",
-    date, location || "Work From Office", String(tasks).trim(), Number(hours), row.id
+    date, location || "Work From Office", String(tasks).trim(), h, row.id
   );
   return NextResponse.json({ ok: true });
 }
 
 export async function DELETE(req: NextRequest, ctx: Ctx) {
-  const me = await requireAuth();
+  const me = await requireAuth(req);
   if (isErr(me)) return me;
   const { id } = await ctx.params;
   const row = await get<{ id: number; employee_id: number; status: string }>("SELECT * FROM timesheets WHERE id = ?", Number(id));

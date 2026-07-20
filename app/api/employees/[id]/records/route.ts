@@ -14,7 +14,7 @@ async function guardTarget(meRole: string, empId: number) {
 
 /** Per-employee datasets for the 360° management console (HR / ADMIN). */
 export async function GET(req: NextRequest, ctx: Ctx) {
-  const me = await requireAuth(["HR", "ADMIN"]);
+  const me = await requireAuth(req, ["HR", "ADMIN"]);
   if (isErr(me)) return me;
   const { id } = await ctx.params;
   const empId = Number(id);
@@ -66,7 +66,7 @@ export async function GET(req: NextRequest, ctx: Ctx) {
 
 /** Management actions: adjust_balance, grant_leave, set_attendance, clear_attendance. */
 export async function POST(req: NextRequest, ctx: Ctx) {
-  const me = await requireAuth(["HR", "ADMIN"]);
+  const me = await requireAuth(req, ["HR", "ADMIN"]);
   if (isErr(me)) return me;
   const { id } = await ctx.params;
   const empId = Number(id);
@@ -133,11 +133,35 @@ export async function POST(req: NextRequest, ctx: Ctx) {
     return NextResponse.json({ ok: true, days });
   }
 
+  /* ---- Encash unused leave → creates an earning pay component + reduces the balance ---- */
+  if (body.action === "encash_leave") {
+    const typeId = Number(body.leave_type_id);
+    const days = Number(body.days);
+    if (!typeId || isNaN(days) || days <= 0) return bad("Pick a leave type and a positive number of days");
+    const type = await get<{ id: number; name: string; encashable: number }>("SELECT id, name, encashable FROM leave_types WHERE id = ?", typeId);
+    if (!type) return bad("Unknown leave type");
+    if (!type.encashable) return bad(`${type.name} is not marked encashable (enable it in Org Settings)`);
+    const bal = await get<{ balance: number }>("SELECT allocated - used AS balance FROM leave_balances WHERE employee_id = ? AND leave_type_id = ?", empId, typeId);
+    if (!bal || bal.balance < days) return bad(`Only ${bal?.balance ?? 0} day(s) available to encash`);
+    const emp = (await get<{ basic: number; hra: number; special_allowance: number; conveyance: number }>(
+      "SELECT basic, hra, special_allowance, conveyance FROM employees WHERE id = ?", empId))!;
+    const gross = emp.basic + emp.hra + emp.special_allowance + emp.conveyance;
+    const amount = Math.round((gross / 30) * days);
+    await tx(async (q) => {
+      await q.run("UPDATE leave_balances SET used = used + ? WHERE employee_id = ? AND leave_type_id = ?", days, empId, typeId);
+      await q.run(
+        "INSERT INTO salary_components (employee_id, name, type, amount, active) VALUES (?, ?, 'earning', ?, 1)",
+        empId, `Leave encashment — ${days} day${days === 1 ? "" : "s"} (${type.name})`, amount
+      );
+    });
+    return NextResponse.json({ ok: true, amount });
+  }
+
   /* ---- Override / add an attendance day ---- */
   if (body.action === "set_attendance") {
     const { date, status } = body;
     if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return bad("A valid date is required");
-    if (!["Present", "Half Day", "Absent", "Leave", "Holiday"].includes(status)) return bad("Invalid status");
+    if (!["Present", "Half Day", "On Duty", "Absent", "Leave", "Holiday"].includes(status)) return bad("Invalid status");
 
     const timed = status === "Present" || status === "Half Day";
     const check_in = timed && body.check_in ? String(body.check_in) : null;

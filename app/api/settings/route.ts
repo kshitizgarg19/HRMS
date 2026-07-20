@@ -5,8 +5,8 @@ import { requireAuth, isErr, bad } from "@/lib/auth";
 const APPROVER_KEYS = ["approver_timesheets", "approver_leaves", "approver_claims"];
 const POLICIES = ["HR_ADMIN", "HOD", "ADMIN"];
 
-export async function GET() {
-  const me = await requireAuth(["HR", "ADMIN"]);
+export async function GET(req: NextRequest) {
+  const me = await requireAuth(req, ["HR", "ADMIN"]);
   if (isErr(me)) return me;
   const rows = await all<{ key: string; value: string }>("SELECT key, value FROM settings");
   const settings: Record<string, string> = {};
@@ -15,7 +15,7 @@ export async function GET() {
 }
 
 export async function PUT(req: NextRequest) {
-  const me = await requireAuth(["ADMIN"]);
+  const me = await requireAuth(req, ["ADMIN"]);
   if (isErr(me)) return me;
   const { key, value } = await req.json().catch(() => ({}));
   if (!APPROVER_KEYS.includes(key)) return bad("Unknown setting");

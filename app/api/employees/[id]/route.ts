@@ -17,50 +17,50 @@ const ADMIN_EDITABLE = [
 ] as const;
 
 export async function GET(req: NextRequest, ctx: Ctx) {
-  const me = await requireAuth();
+  const me = await requireAuth(req);
   if (isErr(me)) return me;
   const { id } = await ctx.params;
   const empId = Number(id);
   if (me.role === "EMPLOYEE" && me.id !== empId) return forbidden();
 
-  const row = await get<Record<string, unknown>>(
-    `SELECT e.*, m.name AS manager_name FROM employees e
-     LEFT JOIN employees m ON m.id = e.manager_id WHERE e.id = ?`,
-    empId
-  );
+  const today = todayStr();
+  const monthStart = today.slice(0, 8) + "01";
+
+  // All independent — one parallel batch instead of ~9 sequential round-trips.
+  const [row, balances, holidayRows, att, pendL, openT, slipsC, managers, deptRows, components] = await Promise.all([
+    get<Record<string, unknown>>(
+      `SELECT e.*, m.name AS manager_name FROM employees e LEFT JOIN employees m ON m.id = e.manager_id WHERE e.id = ?`, empId),
+    all(`SELECT lb.leave_type_id, lt.name AS leave_type, lt.paid, lt.encashable, lb.allocated, lb.used, lb.allocated - lb.used AS balance
+         FROM leave_balances lb JOIN leave_types lt ON lt.id = lb.leave_type_id WHERE lb.employee_id = ?`, empId),
+    all<{ date: string }>("SELECT date FROM holidays"),
+    get<{ present: number | null }>(
+      "SELECT SUM(CASE WHEN status IN ('Present','Half Day','On Duty') THEN 1 ELSE 0 END) present FROM attendance WHERE employee_id = ? AND date >= ? AND date <= ?",
+      empId, monthStart, today),
+    get<{ c: number }>("SELECT COUNT(*) c FROM leave_requests WHERE employee_id = ? AND status = 'Pending'", empId),
+    get<{ c: number }>("SELECT COUNT(*) c FROM tasks WHERE assigned_to = ? AND status != 'Done'", empId),
+    get<{ c: number }>("SELECT COUNT(*) c FROM payslips WHERE employee_id = ?", empId),
+    all("SELECT id, name FROM employees WHERE status = 'Active' AND id != ? ORDER BY name", empId),
+    all<{ name: string }>("SELECT name FROM departments ORDER BY name"),
+    all("SELECT id, name, type, amount, active FROM salary_components WHERE employee_id = ? ORDER BY type DESC, id", empId),
+  ]);
+
   if (!row) return bad("Employee not found", 404);
   delete row.password_hash;
 
-  const balances = await all(
-    `SELECT lb.leave_type_id, lt.name AS leave_type, lt.paid, lb.allocated, lb.used, lb.allocated - lb.used AS balance
-     FROM leave_balances lb JOIN leave_types lt ON lt.id = lb.leave_type_id WHERE lb.employee_id = ?`,
-    empId
-  );
-
-  const today = todayStr();
-  const monthStart = today.slice(0, 8) + "01";
-  const holidays = (await all<{ date: string }>("SELECT date FROM holidays")).map((h) => h.date);
-  const att = (await get<{ present: number | null }>(
-    "SELECT SUM(CASE WHEN status IN ('Present','Half Day') THEN 1 ELSE 0 END) present FROM attendance WHERE employee_id = ? AND date >= ? AND date <= ?",
-    empId, monthStart, today
-  ))!;
-  const working = workingDays(monthStart, today, holidays);
-
+  const working = workingDays(monthStart, today, holidayRows.map((h) => h.date));
   const stats = {
-    attendancePct: working ? Math.round(((att.present || 0) / working) * 100) : 0,
-    pendingLeaves: (await get<{ c: number }>("SELECT COUNT(*) c FROM leave_requests WHERE employee_id = ? AND status = 'Pending'", empId))!.c,
-    openTasks: (await get<{ c: number }>("SELECT COUNT(*) c FROM tasks WHERE assigned_to = ? AND status != 'Done'", empId))!.c,
-    payslips: (await get<{ c: number }>("SELECT COUNT(*) c FROM payslips WHERE employee_id = ?", empId))!.c,
+    attendancePct: working ? Math.round(((att?.present || 0) / working) * 100) : 0,
+    pendingLeaves: pendL?.c ?? 0,
+    openTasks: openT?.c ?? 0,
+    payslips: slipsC?.c ?? 0,
   };
+  const departments = deptRows.map((d) => d.name);
 
-  const managers = await all("SELECT id, name FROM employees WHERE status = 'Active' AND id != ? ORDER BY name", empId);
-  const departments = (await all<{ name: string }>("SELECT name FROM departments ORDER BY name")).map((d) => d.name);
-
-  return NextResponse.json({ employee: row, balances, stats, managers, departments });
+  return NextResponse.json({ employee: row, balances, stats, managers, departments, components });
 }
 
 export async function PUT(req: NextRequest, ctx: Ctx) {
-  const me = await requireAuth(["HR", "ADMIN"]);
+  const me = await requireAuth(req, ["HR", "ADMIN"]);
   if (isErr(me)) return me;
   const { id } = await ctx.params;
   const empId = Number(id);
@@ -107,7 +107,7 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
 }
 
 export async function DELETE(req: NextRequest, ctx: Ctx) {
-  const me = await requireAuth(["ADMIN"]);
+  const me = await requireAuth(req, ["ADMIN"]);
   if (isErr(me)) return me;
   const { id } = await ctx.params;
   const empId = Number(id);

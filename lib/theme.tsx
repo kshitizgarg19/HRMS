@@ -5,18 +5,23 @@ import { createContext, useCallback, useContext, useEffect, useState } from "rea
 type Theme = "light" | "dark";
 
 const ThemeCtx = createContext<{ theme: Theme; toggle: () => void; setTheme: (t: Theme) => void }>({
-  theme: "light",
+  theme: "dark",
   toggle: () => {},
   setTheme: () => {},
 });
 
 export const useTheme = () => useContext(ThemeCtx);
 
-/** Inline script (runs before paint) that applies the saved theme — prevents a flash of the wrong theme. */
-export const themeInitScript = `(function(){try{var t=localStorage.getItem('nexus-theme');if(!t){t=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}if(t==='dark'){document.documentElement.classList.add('dark');}}catch(e){}})();`;
+/**
+ * Inline script (runs before paint) that applies the theme — prevents a flash of the wrong theme.
+ * Default is ALWAYS dark: we ignore the OS `prefers-color-scheme` so a user on a light-mode system
+ * still lands on the dark theme. Dark is only overridden when the user has explicitly chosen light
+ * (persisted as 'nexus-theme' = 'light' via the toggle).
+ */
+export const themeInitScript = `(function(){try{var t=localStorage.getItem('nexus-theme');if(t!=='light'){document.documentElement.classList.add('dark');}}catch(e){document.documentElement.classList.add('dark');}})();`;
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>("light");
+  const [theme, setThemeState] = useState<Theme>("dark");
 
   // Sync state from the class the init script already applied
   useEffect(() => {

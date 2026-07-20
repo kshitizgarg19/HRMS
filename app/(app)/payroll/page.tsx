@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Wallet, Eye, IndianRupee, PiggyBank, ReceiptText, TrendingUp } from "lucide-react";
-import { api } from "@/lib/api";
+import { useData } from "@/lib/swr";
 import { fmtINR, MONTHS } from "@/lib/format";
 import { Badge, Card, DataTable, PageHeader, PageLoader, StatCard } from "@/components/ui";
 import { PayslipModal } from "@/components/payslip";
@@ -15,12 +15,8 @@ interface PayrollData {
 }
 
 export default function PayrollPage() {
-  const [data, setData] = useState<PayrollData | null>(null);
+  const { data } = useData<PayrollData>("/api/payroll?mine=1");
   const [viewSlip, setViewSlip] = useState<number | null>(null);
-
-  useEffect(() => {
-    api<PayrollData>("/api/payroll?mine=1").then(setData).catch(() => {});
-  }, []);
 
   if (!data) return <PageLoader />;
   const s = data.structure;

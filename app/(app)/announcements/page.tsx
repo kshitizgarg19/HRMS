@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Megaphone, Plus, Pin, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
+import { useData } from "@/lib/swr";
 import { Avatar, Button, Card, ConfirmModal, Field, Input, Modal, PageHeader, PageLoader, Textarea, useToast, cn } from "@/components/ui";
 import { useMe } from "@/components/shell";
 import type { Announcement } from "@/lib/types";
@@ -12,15 +13,13 @@ type Ann = Announcement & { author_color?: string | null; author_designation?: s
 export default function AnnouncementsPage() {
   const me = useMe();
   const isMgmt = me.role !== "EMPLOYEE";
-  const [rows, setRows] = useState<Ann[] | null>(null);
+  const { data, reload } = useData<{ rows: Ann[] }>("/api/announcements");
+  const rows = data?.rows;
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState({ title: "", body: "", pinned: false });
   const [busy, setBusy] = useState(false);
   const [confirmDel, setConfirmDel] = useState<Ann | null>(null);
   const toast = useToast();
-
-  const load = () => api<{ rows: Ann[] }>("/api/announcements").then((d) => setRows(d.rows)).catch(() => {});
-  useEffect(() => { load(); }, []);
 
   if (!rows) return <PageLoader />;
 
@@ -32,7 +31,7 @@ export default function AnnouncementsPage() {
       toast.push("success", "Announcement published 📣");
       setModal(false);
       setForm({ title: "", body: "", pinned: false });
-      await load();
+      await reload();
     } catch (e) {
       toast.push("error", e instanceof Error ? e.message : "Failed to publish");
     } finally {
@@ -43,7 +42,7 @@ export default function AnnouncementsPage() {
   const togglePin = async (a: Ann) => {
     try {
       await api(`/api/announcements/${a.id}`, { method: "PUT", body: JSON.stringify({ title: a.title, body: a.body, pinned: a.pinned ? 0 : 1 }) });
-      await load();
+      await reload();
     } catch (e) {
       toast.push("error", e instanceof Error ? e.message : "Failed");
     }
@@ -56,7 +55,7 @@ export default function AnnouncementsPage() {
       await api(`/api/announcements/${confirmDel.id}`, { method: "DELETE" });
       toast.push("success", "Announcement deleted");
       setConfirmDel(null);
-      await load();
+      await reload();
     } catch (e) {
       toast.push("error", e instanceof Error ? e.message : "Failed to delete");
     } finally {
@@ -93,7 +92,7 @@ export default function AnnouncementsPage() {
                 {a.pinned ? <span className="rounded-full bg-amber-100 dark:bg-amber-500/15 px-2.5 py-1 text-[11px] font-extrabold text-amber-700 dark:text-amber-300">📌 Pinned</span> : null}
                 {isMgmt && (
                   <span className="flex gap-1 opacity-0 transition group-hover:opacity-100">
-                    <button onClick={() => togglePin(a)} title={a.pinned ? "Unpin" : "Pin"} className="rounded-lg p-2 text-amber-500 hover:bg-amber-50 cursor-pointer"><Pin size={14} /></button>
+                    <button onClick={() => togglePin(a)} title={a.pinned ? "Unpin" : "Pin"} className="rounded-lg p-2 text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-500/10 cursor-pointer"><Pin size={14} /></button>
                     <button onClick={() => setConfirmDel(a)} className="rounded-lg p-2 text-rose-500 dark:text-rose-400 hover:bg-rose-50 cursor-pointer"><Trash2 size={14} /></button>
                   </span>
                 )}

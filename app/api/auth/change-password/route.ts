@@ -4,7 +4,7 @@ import { get, run } from "@/lib/db";
 import { requireAuth, isErr, bad } from "@/lib/auth";
 
 export async function POST(req: NextRequest) {
-  const me = await requireAuth();
+  const me = await requireAuth(req);
   if (isErr(me)) return me;
 
   const { current, next } = await req.json().catch(() => ({}));

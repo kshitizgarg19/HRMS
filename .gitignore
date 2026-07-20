@@ -17,3 +17,6 @@
 *.pem
 npm-debug.log*
 next-env.d.ts
+*.tsbuildinfo
+.vercel
+.env.local.turso-backup

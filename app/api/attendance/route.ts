@@ -4,7 +4,7 @@ import { requireAuth, isErr, bad, forbidden } from "@/lib/auth";
 import { todayStr, nowTime, workingDays } from "@/lib/format";
 
 export async function GET(req: NextRequest) {
-  const me = await requireAuth();
+  const me = await requireAuth(req);
   if (isErr(me)) return me;
   const sp = req.nextUrl.searchParams;
   const view = sp.get("view");
@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
     const rows = await all(
       `SELECT e.id, e.name, e.emp_code, e.department, e.designation, e.avatar_color,
               a.check_in, a.check_out, a.hours, a.status, a.mode,
-              (SELECT COUNT(*) FROM attendance x WHERE x.employee_id = e.id AND x.date >= ? AND x.date <= ? AND x.status IN ('Present','Half Day')) AS present_month
+              (SELECT COUNT(*) FROM attendance x WHERE x.employee_id = e.id AND x.date >= ? AND x.date <= ? AND x.status IN ('Present','Half Day','On Duty')) AS present_month
        FROM employees e
        LEFT JOIN attendance a ON a.employee_id = e.id AND a.date = ?
        WHERE e.status != 'Exited'
@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const me = await requireAuth();
+  const me = await requireAuth(req);
   if (isErr(me)) return me;
   const { action, mode } = await req.json().catch(() => ({}));
   const today = todayStr();
@@ -51,6 +51,7 @@ export async function POST(req: NextRequest) {
   if (action === "in") {
     if (existing?.check_in) return bad("You have already checked in today");
     if (existing?.status === "Leave") return bad("You are on approved leave today");
+    if (existing?.status === "On Duty") return bad("You're marked On Duty today — no need to punch in");
     const t = nowTime();
     if (existing) {
       await run("UPDATE attendance SET check_in = ?, status = 'Present', mode = ? WHERE id = ?", t, mode === "WFH" ? "WFH" : "WFO", existing.id);

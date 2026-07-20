@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Clock4, Plus, Pencil, Trash2, CalendarDays, Timer, Hourglass } from "lucide-react";
 import { api } from "@/lib/api";
+import { useData } from "@/lib/swr";
 import { fmtDate, todayStr, weekday } from "@/lib/format";
 import { Badge, Button, Card, ConfirmModal, DataTable, Field, Input, Modal, PageHeader, PageLoader, Select, StatCard, Textarea, useToast } from "@/components/ui";
 import type { Timesheet } from "@/lib/types";
@@ -10,16 +11,14 @@ import type { Timesheet } from "@/lib/types";
 const EMPTY = { date: todayStr(), location: "Work From Office", tasks: "", hours: "8" };
 
 export default function TimesheetPage() {
-  const [rows, setRows] = useState<Timesheet[] | null>(null);
+  const { data, reload } = useData<{ rows: Timesheet[] }>("/api/timesheets");
+  const rows = data?.rows;
   const [modal, setModal] = useState(false);
   const [editing, setEditing] = useState<Timesheet | null>(null);
   const [form, setForm] = useState(EMPTY);
   const [confirmDel, setConfirmDel] = useState<Timesheet | null>(null);
   const [busy, setBusy] = useState(false);
   const toast = useToast();
-
-  const load = () => api<{ rows: Timesheet[] }>("/api/timesheets").then((d) => setRows(d.rows)).catch(() => {});
-  useEffect(() => { load(); }, []);
 
   const stats = useMemo(() => {
     if (!rows) return { month: 0, entries: 0, pending: 0, approved: 0 };
@@ -53,7 +52,7 @@ export default function TimesheetPage() {
         toast.push("success", "Timesheet logged");
       }
       setModal(false);
-      await load();
+      await reload();
     } catch (e) {
       toast.push("error", e instanceof Error ? e.message : "Failed to save");
     } finally {
@@ -68,7 +67,7 @@ export default function TimesheetPage() {
       await api(`/api/timesheets/${confirmDel.id}`, { method: "DELETE" });
       toast.push("success", "Entry deleted");
       setConfirmDel(null);
-      await load();
+      await reload();
     } catch (e) {
       toast.push("error", e instanceof Error ? e.message : "Failed to delete");
     } finally {

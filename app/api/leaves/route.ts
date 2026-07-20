@@ -5,7 +5,7 @@ import { workingDays } from "@/lib/format";
 import { approvalPolicy, hodDepartments } from "@/lib/policy";
 
 export async function GET(req: NextRequest) {
-  const me = await requireAuth();
+  const me = await requireAuth(req);
   if (isErr(me)) return me;
   const sp = req.nextUrl.searchParams;
   const showAll = sp.get("all") === "1";
@@ -14,15 +14,6 @@ export async function GET(req: NextRequest) {
     hodScope = (await approvalPolicy("leaves")) === "HOD" ? await hodDepartments(me.id) : [];
     if (!hodScope.length) return forbidden();
   }
-
-  const types = await all("SELECT * FROM leave_types ORDER BY id");
-
-  const balances = await all(
-    `SELECT lb.leave_type_id, lt.name AS leave_type, lt.paid, lb.allocated, lb.used, lb.allocated - lb.used AS balance
-     FROM leave_balances lb JOIN leave_types lt ON lt.id = lb.leave_type_id
-     WHERE lb.employee_id = ? ORDER BY lb.leave_type_id`,
-    me.id
-  );
 
   const where: string[] = [];
   const params: unknown[] = [];
@@ -39,26 +30,29 @@ export async function GET(req: NextRequest) {
     params.push(sp.get("status"));
   }
 
-  const requests = await all(
-    `SELECT lr.*, lt.name AS leave_type, e.name AS employee_name, e.emp_code, e.department, e.avatar_color,
+  // types, balances, requests, colleagues are independent — fetch in parallel.
+  const [types, balances, requests, colleagues] = await Promise.all([
+    all("SELECT * FROM leave_types ORDER BY id"),
+    all(`SELECT lb.leave_type_id, lt.name AS leave_type, lt.paid, lb.allocated, lb.used, lb.allocated - lb.used AS balance
+         FROM leave_balances lb JOIN leave_types lt ON lt.id = lb.leave_type_id
+         WHERE lb.employee_id = ? ORDER BY lb.leave_type_id`, me.id),
+    all(`SELECT lr.*, lt.name AS leave_type, e.name AS employee_name, e.emp_code, e.department, e.avatar_color,
             resp.name AS responsible_name, rev.name AS reviewer_name
-     FROM leave_requests lr
-     JOIN leave_types lt ON lt.id = lr.leave_type_id
-     JOIN employees e ON e.id = lr.employee_id
-     LEFT JOIN employees resp ON resp.id = lr.responsible_id
-     LEFT JOIN employees rev ON rev.id = lr.reviewed_by
-     ${where.length ? "WHERE " + where.join(" AND ") : ""}
-     ORDER BY lr.created_at DESC LIMIT 200`,
-    ...params
-  );
-
-  const colleagues = await all("SELECT id, name FROM employees WHERE status = 'Active' AND id != ? ORDER BY name", me.id);
+         FROM leave_requests lr
+         JOIN leave_types lt ON lt.id = lr.leave_type_id
+         JOIN employees e ON e.id = lr.employee_id
+         LEFT JOIN employees resp ON resp.id = lr.responsible_id
+         LEFT JOIN employees rev ON rev.id = lr.reviewed_by
+         ${where.length ? "WHERE " + where.join(" AND ") : ""}
+         ORDER BY lr.created_at DESC LIMIT 200`, ...params),
+    all("SELECT id, name FROM employees WHERE status = 'Active' AND id != ? ORDER BY name", me.id),
+  ]);
 
   return NextResponse.json({ types, balances, requests, colleagues });
 }
 
 export async function POST(req: NextRequest) {
-  const me = await requireAuth();
+  const me = await requireAuth(req);
   if (isErr(me)) return me;
   const { leave_type_id, from_date, to_date, half, reason, responsible_id } = await req.json().catch(() => ({}));
   if (!leave_type_id || !from_date || !to_date || !reason) return bad("Leave type, dates and reason are required");

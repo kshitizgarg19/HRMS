@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import { amountInWords, fmtDate, fmtINR, MONTHS } from "@/lib/format";
 import { Badge, Button, Modal, PageLoader } from "./ui";
 import type { Payslip } from "@/lib/types";
+import type { PayComponent } from "@/lib/payroll";
 
 export function PayslipModal({ slipId, onClose }: { slipId: number | null; onClose: () => void }) {
   const [slip, setSlip] = useState<Payslip | null>(null);
@@ -16,6 +17,13 @@ export function PayslipModal({ slipId, onClose }: { slipId: number | null; onClo
       api<{ slip: Payslip }>(`/api/payroll/${slipId}`).then((d) => setSlip(d.slip)).catch(() => {});
     }
   }, [slipId]);
+
+  let extra: PayComponent[] = [];
+  if (slip?.components) {
+    try { extra = JSON.parse(slip.components) as PayComponent[]; } catch { extra = []; }
+  }
+  const extraEarn = extra.filter((c) => c.type === "earning");
+  const extraDed = extra.filter((c) => c.type === "deduction");
 
   return (
     <Modal open={!!slipId} onClose={onClose} title="Payslip" width="max-w-3xl"
@@ -68,15 +76,16 @@ export function PayslipModal({ slipId, onClose }: { slipId: number | null; onClo
               <div className="border-b border-slate-200 sm:border-b-0 sm:border-r">
                 <p className="bg-emerald-50 px-6 py-2 text-[11px] font-extrabold uppercase tracking-wider text-emerald-700">Earnings</p>
                 <ul className="px-6 py-3">
-                  {[
+                  {([
                     ["Basic Salary", slip.basic],
                     ["House Rent Allowance", slip.hra],
                     ["Special Allowance", slip.special_allowance],
                     ["Conveyance", slip.conveyance],
-                  ].map(([k, v]) => (
-                    <li key={k as string} className="flex justify-between py-1.5 text-sm">
+                    ...extraEarn.map((c) => [c.name, c.amount] as [string, number]),
+                  ] as [string, number][]).map(([k, v], i) => (
+                    <li key={`${k}-${i}`} className="flex justify-between py-1.5 text-sm">
                       <span className="text-slate-500">{k}</span>
-                      <span className="font-bold text-slate-800">{fmtINR(v as number)}</span>
+                      <span className="font-bold text-slate-800">{fmtINR(v)}</span>
                     </li>
                   ))}
                   <li className="mt-2 flex justify-between border-t-2 border-slate-100 pt-2.5 text-sm font-extrabold text-slate-900">
@@ -87,15 +96,16 @@ export function PayslipModal({ slipId, onClose }: { slipId: number | null; onClo
               <div>
                 <p className="bg-rose-50 px-6 py-2 text-[11px] font-extrabold uppercase tracking-wider text-rose-700">Deductions</p>
                 <ul className="px-6 py-3">
-                  {[
+                  {([
                     ["Provident Fund (12%)", slip.pf],
                     ["Professional Tax", slip.prof_tax],
                     ["TDS (Income Tax)", slip.tds],
                     [`Loss of Pay (${slip.lop_days} day${slip.lop_days === 1 ? "" : "s"})`, slip.lop_amount],
-                  ].map(([k, v]) => (
-                    <li key={k as string} className="flex justify-between py-1.5 text-sm">
+                    ...extraDed.map((c) => [c.name, c.amount] as [string, number]),
+                  ] as [string, number][]).map(([k, v], i) => (
+                    <li key={`${k}-${i}`} className="flex justify-between py-1.5 text-sm">
                       <span className="text-slate-500">{k}</span>
-                      <span className="font-bold text-slate-800">{fmtINR(v as number)}</span>
+                      <span className="font-bold text-slate-800">{fmtINR(v)}</span>
                     </li>
                   ))}
                   <li className="mt-2 flex justify-between border-t-2 border-slate-100 pt-2.5 text-sm font-extrabold text-slate-900">

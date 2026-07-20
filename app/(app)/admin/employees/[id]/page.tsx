@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft, Briefcase, CalendarCheck2, Check, Clock4, Gift, KeyRound, Landmark, Palmtree, Pencil, Plus,
-  Receipt, Save, ShieldAlert, Trash2, UserCircle2, UserCog, Wallet, X, Eye,
+  Receipt, Save, ShieldAlert, Trash2, UserCircle2, UserCog, Wallet, X, Eye, IndianRupee,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { fmtDate, fmtINR, fmtTime, todayStr, MONTHS } from "@/lib/format";
@@ -14,9 +14,9 @@ import {
 } from "@/components/ui";
 import { PayslipModal } from "@/components/payslip";
 import { useMe } from "@/components/shell";
-import type { AttendanceRecord, Employee, LeaveRequest, Payslip, Reimbursement, Timesheet } from "@/lib/types";
+import type { AttendanceRecord, Employee, LeaveRequest, Payslip, Reimbursement, SalaryComponent, Timesheet } from "@/lib/types";
 
-type Balance = { leave_type_id: number; leave_type: string; paid: number; allocated: number; used: number; balance: number };
+type Balance = { leave_type_id: number; leave_type: string; paid: number; encashable: number; allocated: number; used: number; balance: number };
 
 type Detail = {
   employee: Employee & { manager_name?: string | null };
@@ -24,6 +24,7 @@ type Detail = {
   stats: { attendancePct: number; pendingLeaves: number; openTasks: number; payslips: number };
   managers: { id: number; name: string }[];
   departments: string[];
+  components: SalaryComponent[];
 };
 
 const FIELDS_PERSONAL: [string, string, string?][] = [
@@ -61,12 +62,15 @@ export default function AdminEmployeeDetail() {
   // modals
   const [balModal, setBalModal] = useState<Balance | null>(null);
   const [balForm, setBalForm] = useState({ allocated: "0", used: "0" });
+  const [encashModal, setEncashModal] = useState<Balance | null>(null);
+  const [encashDays, setEncashDays] = useState("");
   const [grantOpen, setGrantOpen] = useState(false);
   const [grantForm, setGrantForm] = useState({ leave_type_id: "", from_date: todayStr(), to_date: todayStr(), reason: "" });
   const [attModal, setAttModal] = useState<{ date: string; status: string; check_in: string; check_out: string; mode: string } | null>(null);
   const [attDelete, setAttDelete] = useState<string | null>(null);
   const [viewSlip, setViewSlip] = useState<number | null>(null);
   const [slipDelete, setSlipDelete] = useState<Payslip | null>(null);
+  const [compForm, setCompForm] = useState({ name: "", type: "earning", amount: "" });
 
   const load = useCallback(() => {
     api<Detail>(`/api/employees/${id}`).then((d) => {
@@ -124,6 +128,16 @@ export default function AdminEmployeeDetail() {
   };
 
   const save = () => run(() => api(`/api/employees/${id}`, { method: "PUT", body: JSON.stringify(form) }), "Employee record updated", load);
+
+  const addComponent = () => {
+    if (!compForm.name.trim() || !compForm.amount) return toast.push("error", "Component name and amount are required");
+    run(() => api(`/api/employees/${id}/components`, { method: "POST", body: JSON.stringify(compForm) }), "Pay component added", () => {
+      setCompForm({ name: "", type: "earning", amount: "" });
+      load();
+    });
+  };
+  const deleteComponent = (cid: number) =>
+    run(() => api(`/api/employees/${id}/components/${cid}`, { method: "DELETE" }), "Component removed", load);
 
   const action = (body: Record<string, unknown>, okMsg: string, after?: () => void) =>
     run(() => api(`/api/employees/${id}/records`, { method: "POST", body: JSON.stringify(body) }), okMsg, after);
@@ -217,6 +231,7 @@ export default function AdminEmployeeDetail() {
       )}
 
       {tab === "job" && (
+        <div className="space-y-4">
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
           <Card title="Job Details" icon={<Briefcase size={16} />}>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -272,6 +287,47 @@ export default function AdminEmployeeDetail() {
             <p className="mt-3 text-xs leading-relaxed text-slate-400 dark:text-slate-500">Changes apply from the next payroll run. To correct an already-generated month, delete that payslip (Payslips tab) and re-run payroll.</p>
           </Card>
         </div>
+
+        <Card title="Pay Components" icon={<Wallet size={16} />}
+          action={<span className="text-xs font-semibold text-slate-400 dark:text-slate-500">custom earnings &amp; deductions</span>}>
+          <p className="mb-3 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+            Add any custom <b>earning</b> (bonus, travel allowance, incentive) or <b>deduction</b> (loan EMI, insurance, advance) beyond the four standard components. These flow into the next payroll run and show up on the payslip automatically.
+          </p>
+          {data.components.length > 0 && (
+            <ul className="mb-4 space-y-2">
+              {data.components.map((c) => (
+                <li key={c.id} className="flex items-center justify-between rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 px-3.5 py-2.5">
+                  <span className="flex items-center gap-2.5">
+                    <Badge tone={c.type === "earning" ? "Approved" : "Rejected"}>{c.type === "earning" ? "Earning" : "Deduction"}</Badge>
+                    <span className="text-sm font-bold text-slate-800 dark:text-slate-100">{c.name}</span>
+                  </span>
+                  <span className="flex items-center gap-3">
+                    <span className={cn("text-sm font-extrabold", c.type === "earning" ? "text-emerald-600 dark:text-emerald-300" : "text-rose-600 dark:text-rose-400")}>
+                      {c.type === "earning" ? "+" : "−"}{fmtINR(c.amount)}
+                    </span>
+                    {!hrLocked && (
+                      <button onClick={() => deleteComponent(c.id)} className="rounded-lg p-1.5 text-rose-500 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 cursor-pointer" title="Remove"><Trash2 size={14} /></button>
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {!hrLocked && (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_150px_150px_auto] sm:items-end">
+              <Field label="Name"><Input placeholder="e.g. Performance bonus" value={compForm.name} onChange={(e) => setCompForm({ ...compForm, name: e.target.value })} /></Field>
+              <Field label="Type">
+                <Select value={compForm.type} onChange={(e) => setCompForm({ ...compForm, type: e.target.value })}>
+                  <option value="earning">Earning (+)</option>
+                  <option value="deduction">Deduction (−)</option>
+                </Select>
+              </Field>
+              <Field label="Amount (₹)"><Input type="number" min="1" placeholder="0" value={compForm.amount} onChange={(e) => setCompForm({ ...compForm, amount: e.target.value })} /></Field>
+              <Button onClick={addComponent} loading={busy}><Plus size={14} /> Add</Button>
+            </div>
+          )}
+        </Card>
+        </div>
       )}
 
       {tab === "bank" && (
@@ -315,6 +371,14 @@ export default function AdminEmployeeDetail() {
                     </>
                   ) : (
                     <p className="mt-2 text-sm font-semibold text-slate-400 dark:text-slate-500">Unpaid · {b.used} day(s) taken</p>
+                  )}
+                  {!hrLocked && !!b.encashable && b.balance > 0 && (
+                    <button
+                      onClick={() => { setEncashModal(b); setEncashDays(""); }}
+                      className="mt-2.5 inline-flex items-center gap-1 rounded-lg bg-emerald-50 dark:bg-emerald-500/15 px-2.5 py-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-500/25 cursor-pointer"
+                    >
+                      <IndianRupee size={11} /> Encash
+                    </button>
                   )}
                 </div>
               ))}
@@ -509,6 +573,35 @@ export default function AdminEmployeeDetail() {
         </div>
       </Modal>
 
+      <Modal open={!!encashModal} onClose={() => setEncashModal(null)} title={`Encash ${encashModal?.leave_type}`} subtitle={`${emp.name} — paid out as an earning on the next payroll run`}>
+        {encashModal && (() => {
+          const perDay = Math.round(((Number(emp.basic) || 0) + (Number(emp.hra) || 0) + (Number(emp.special_allowance) || 0) + (Number(emp.conveyance) || 0)) / 30);
+          const days = Number(encashDays) || 0;
+          const amount = Math.round(perDay * days);
+          const valid = days > 0 && days <= encashModal.balance;
+          return (
+            <div className="space-y-4">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Available: <b className="text-slate-700 dark:text-slate-200">{encashModal.balance} day(s)</b> · per-day (gross ÷ 30): <b className="text-slate-700 dark:text-slate-200">{fmtINR(perDay)}</b>
+              </p>
+              <Field label="Days to encash" required>
+                <Input type="number" min="0.5" max={String(encashModal.balance)} step="0.5" value={encashDays} onChange={(e) => setEncashDays(e.target.value)} />
+              </Field>
+              <p className={cn("rounded-xl px-4 py-2.5 text-sm font-bold", valid ? "bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" : "bg-slate-50 dark:bg-slate-800/40 text-slate-500 dark:text-slate-400")}>
+                Encashment amount: {fmtINR(amount)}
+              </p>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setEncashModal(null)}>Cancel</Button>
+                <Button loading={busy} onClick={() => {
+                  if (!valid) return toast.push("error", "Enter a valid number of days within the balance");
+                  action({ action: "encash_leave", leave_type_id: encashModal.leave_type_id, days }, "Leave encashed — added as a pay component", () => { setEncashModal(null); setEncashDays(""); load(); });
+                }}><IndianRupee size={14} /> Encash {fmtINR(amount)}</Button>
+              </div>
+            </div>
+          );
+        })()}
+      </Modal>
+
       <Modal open={grantOpen} onClose={() => setGrantOpen(false)} title="Grant Leave" subtitle={`Auto-approved leave on behalf of ${emp.name} — balance deducted, attendance marked`}>
         <div className="space-y-4">
           <Field label="Leave Type" required>
@@ -538,7 +631,7 @@ export default function AdminEmployeeDetail() {
               <Field label="Date" required><Input type="date" value={attModal.date} onChange={(e) => setAttModal({ ...attModal, date: e.target.value })} /></Field>
               <Field label="Status">
                 <Select value={attModal.status} onChange={(e) => setAttModal({ ...attModal, status: e.target.value })}>
-                  {["Present", "Half Day", "Absent", "Leave", "Holiday"].map((s) => <option key={s}>{s}</option>)}
+                  {["Present", "Half Day", "On Duty", "Absent", "Leave", "Holiday"].map((s) => <option key={s}>{s}</option>)}
                 </Select>
               </Field>
             </div>

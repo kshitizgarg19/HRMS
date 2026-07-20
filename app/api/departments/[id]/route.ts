@@ -5,7 +5,7 @@ import { requireAuth, isErr, bad } from "@/lib/auth";
 type Ctx = { params: Promise<{ id: string }> };
 
 export async function PUT(req: NextRequest, ctx: Ctx) {
-  const me = await requireAuth(["ADMIN"]);
+  const me = await requireAuth(req, ["ADMIN"]);
   if (isErr(me)) return me;
   const { id } = await ctx.params;
   const body = await req.json().catch(() => ({}));
@@ -40,7 +40,7 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
 }
 
 export async function DELETE(req: NextRequest, ctx: Ctx) {
-  const me = await requireAuth(["ADMIN"]);
+  const me = await requireAuth(req, ["ADMIN"]);
   if (isErr(me)) return me;
   const { id } = await ctx.params;
   const dept = await get<{ id: number; name: string }>("SELECT * FROM departments WHERE id = ?", Number(id));

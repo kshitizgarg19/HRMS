@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CalendarCheck2, ChevronLeft, ChevronRight, Clock4, Home, Building2, Users2 } from "lucide-react";
-import { api } from "@/lib/api";
+import { useData } from "@/lib/swr";
 import { fmtDate, fmtTime, todayStr, MONTHS } from "@/lib/format";
 import { Badge, Card, DataTable, PageHeader, PageLoader, PersonCell, Tabs, cn } from "@/components/ui";
 import { useMe } from "@/components/shell";
@@ -12,6 +12,7 @@ const CELL: Record<string, string> = {
   Present: "bg-emerald-100 text-emerald-700 ring-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/25",
   "Half Day": "bg-amber-100 text-amber-700 ring-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-amber-500/25",
   Leave: "bg-sky-100 text-sky-700 ring-sky-200 dark:bg-sky-500/15 dark:text-sky-300 dark:ring-sky-500/25",
+  "On Duty": "bg-teal-100 text-teal-700 ring-teal-200 dark:bg-teal-500/15 dark:text-teal-300 dark:ring-teal-500/25",
   Absent: "bg-rose-100 text-rose-700 ring-rose-200 dark:bg-rose-500/15 dark:text-rose-300 dark:ring-rose-500/25",
   Holiday: "bg-violet-100 text-violet-700 ring-violet-200 dark:bg-violet-500/15 dark:text-violet-300 dark:ring-violet-500/25",
   Weekend: "bg-slate-50 text-slate-300 ring-slate-100 dark:bg-slate-800/40 dark:text-slate-600 dark:ring-slate-800",
@@ -21,11 +22,7 @@ const CELL: Record<string, string> = {
 
 function MyAttendance() {
   const [month, setMonth] = useState(todayStr().slice(0, 7));
-  const [data, setData] = useState<{ rows: AttendanceRecord[]; holidays: Holiday[] } | null>(null);
-
-  useEffect(() => {
-    api<{ rows: AttendanceRecord[]; holidays: Holiday[] }>(`/api/attendance?month=${month}`).then(setData).catch(() => {});
-  }, [month]);
+  const { data } = useData<{ rows: AttendanceRecord[]; holidays: Holiday[] }>(`/api/attendance?month=${month}`);
 
   const shift = (n: number) => {
     const [y, m] = month.split("-").map(Number);
@@ -42,7 +39,7 @@ function MyAttendance() {
     const holidaysBy = new Map((data?.holidays || []).map((h) => [h.date, h]));
     const cells: { date: string; day: number; kind: string; title: string }[] = [];
     for (let i = 0; i < first.getDay(); i++) cells.push({ date: `pad-${i}`, day: 0, kind: "pad", title: "" });
-    const summary = { present: 0, leave: 0, absent: 0, half: 0, hours: 0, hoursDays: 0, wfh: 0 };
+    const summary = { present: 0, leave: 0, absent: 0, half: 0, onDuty: 0, hours: 0, hoursDays: 0, wfh: 0 };
     for (let d = 1; d <= daysInMonth; d++) {
       const date = `${month}-${String(d).padStart(2, "0")}`;
       const dow = new Date(y, m - 1, d).getDay();
@@ -55,6 +52,7 @@ function MyAttendance() {
         title = rec.status + (rec.check_in ? ` · ${fmtTime(rec.check_in)} → ${fmtTime(rec.check_out)}` : "");
         if (rec.status === "Present") summary.present++;
         if (rec.status === "Half Day") { summary.half++; summary.present++; }
+        if (rec.status === "On Duty") { summary.onDuty++; summary.present++; }
         if (rec.status === "Leave") summary.leave++;
         if (rec.status === "Absent") summary.absent++;
         if (rec.hours) { summary.hours += rec.hours; summary.hoursDays++; }
@@ -78,6 +76,7 @@ function MyAttendance() {
 
   const stats = [
     { label: "Present", value: summary.present, cls: "text-emerald-600 dark:text-emerald-300" },
+    { label: "On Duty", value: summary.onDuty, cls: "text-teal-600 dark:text-teal-300" },
     { label: "On Leave", value: summary.leave, cls: "text-sky-600" },
     { label: "Absent", value: summary.absent, cls: "text-rose-600 dark:text-rose-400" },
     { label: "Half Days", value: summary.half, cls: "text-amber-600 dark:text-amber-300" },
@@ -117,7 +116,7 @@ function MyAttendance() {
           )}
         </div>
         <div className="mt-4 flex flex-wrap gap-3 border-t border-slate-100 dark:border-slate-800 pt-4">
-          {(["Present", "Half Day", "Leave", "Absent", "Holiday", "Weekend"] as const).map((k) => (
+          {(["Present", "Half Day", "On Duty", "Leave", "Absent", "Holiday", "Weekend"] as const).map((k) => (
             <span key={k} className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
               <span className={cn("size-3 rounded ring-1", CELL[k])} /> {k}
             </span>
@@ -156,16 +155,11 @@ function MyAttendance() {
 
 function TeamAttendance() {
   const [date, setDate] = useState(todayStr());
-  const [data, setData] = useState<{ date: string; working: number; team: (AttendanceRecord & { name: string; emp_code: string; department: string; designation: string; avatar_color: string; present_month: number })[] } | null>(null);
-
-  const load = useCallback(() => {
-    api<typeof data>(`/api/attendance?view=team&date=${date}`).then((d) => setData(d)).catch(() => {});
-  }, [date]);
-  useEffect(() => { load(); }, [load]);
+  const { data } = useData<{ date: string; working: number; team: (AttendanceRecord & { name: string; emp_code: string; department: string; designation: string; avatar_color: string; present_month: number })[] }>(`/api/attendance?view=team&date=${date}`);
 
   if (!data) return <PageLoader />;
 
-  const presentCount = data.team.filter((t) => t.status === "Present" || t.status === "Half Day").length;
+  const presentCount = data.team.filter((t) => t.status === "Present" || t.status === "Half Day" || t.status === "On Duty").length;
 
   return (
     <Card

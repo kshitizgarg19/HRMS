@@ -349,3 +349,110 @@ body {
   }
   html { scroll-behavior: auto; }
 }
+
+/* ============================================================
+   MOBILE / NATIVE-APP POLISH
+   ============================================================ */
+
+/* Kill the grey tap flash and text-callout for a native feel */
+html { -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; }
+/* Stop the whole page rubber-banding past its edges */
+body { overscroll-behavior-y: none; }
+
+/* Respect the notch / home-indicator */
+.pb-safe { padding-bottom: max(0.5rem, env(safe-area-inset-bottom)); }
+.pt-safe { padding-top: env(safe-area-inset-top); }
+.bottom-safe { bottom: env(safe-area-inset-bottom); }
+
+@media (max-width: 640px) {
+  /* iOS zooms when an input's font is < 16px — keep them 16px on phones */
+  input, select, textarea { font-size: 16px !important; }
+  /* On phones the modal becomes a bottom sheet that slides up */
+  .modal-panel { animation: sheetUp 0.4s cubic-bezier(0.22, 1, 0.36, 1) both; }
+}
+
+@keyframes sheetUp {
+  from { opacity: 0; transform: translateY(100%); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Bottom-nav active-item pop */
+@keyframes navPop {
+  0% { transform: scale(0.8); }
+  60% { transform: scale(1.12); }
+  100% { transform: scale(1); }
+}
+.nav-pop { animation: navPop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
+
+/* ============================================================
+   PREMIUM · GLASS · LUXURY SURFACES
+   ============================================================ */
+
+/* App canvas — a soft, fixed jewel-tone mesh so the UI floats on depth, never flat grey. */
+.app-canvas {
+  background-color: #f4f5fb;
+  background-image:
+    radial-gradient(56% 50% at 4% -8%, rgba(99, 102, 241, 0.13) 0%, transparent 56%),
+    radial-gradient(52% 46% at 104% 2%, rgba(168, 85, 247, 0.11) 0%, transparent 56%),
+    radial-gradient(48% 54% at 90% 106%, rgba(236, 72, 153, 0.08) 0%, transparent 58%);
+  background-attachment: fixed;
+}
+.dark .app-canvas {
+  background-color: #05070f;
+  background-image:
+    radial-gradient(56% 50% at 4% -8%, rgba(99, 102, 241, 0.22) 0%, transparent 56%),
+    radial-gradient(52% 46% at 104% 2%, rgba(168, 85, 247, 0.18) 0%, transparent 56%),
+    radial-gradient(48% 54% at 90% 106%, rgba(236, 72, 153, 0.13) 0%, transparent 58%);
+}
+
+/* Frosted glass — sidebar, header, drawer. Translucent + blurred + saturated. */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.66);
+  backdrop-filter: blur(22px) saturate(180%);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+}
+.dark .glass-panel {
+  background: rgba(10, 15, 28, 0.6);
+}
+
+/* Premium card finish — gradient body, top sheen highlight, layered luxury shadow. */
+.lux-card {
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.97), rgba(255, 255, 255, 0.84));
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.95),
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 14px 32px -22px rgba(30, 27, 75, 0.24);
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.35s ease, border-color 0.35s ease;
+}
+.dark .lux-card {
+  background-image: linear-gradient(180deg, rgba(30, 41, 59, 0.5), rgba(15, 23, 42, 0.62));
+  box-shadow:
+    inset 0 1px 0 0 rgba(148, 163, 184, 0.09),
+    0 1px 2px rgba(0, 0, 0, 0.3),
+    0 16px 36px -24px rgba(0, 0, 0, 0.65);
+}
+.lux-card:hover {
+  border-color: rgba(165, 180, 252, 0.65);
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.95),
+    0 22px 48px -24px rgba(79, 70, 229, 0.36),
+    0 6px 16px -8px rgba(15, 23, 42, 0.1);
+}
+.dark .lux-card:hover { border-color: rgba(129, 140, 248, 0.45); }
+
+/* Soft luxury glow — for hero icon chips / accents. */
+.lux-glow { box-shadow: 0 10px 34px -10px rgba(99, 102, 241, 0.55); }
+
+/* Subtle drifting sheen for premium hero surfaces. */
+@keyframes sheenDrift {
+  0%, 100% { transform: translateX(-30%) rotate(8deg); opacity: 0.5; }
+  50% { transform: translateX(30%) rotate(8deg); opacity: 0.9; }
+}
+.sheen-drift::after {
+  content: "";
+  position: absolute;
+  inset: -40% -10%;
+  background: linear-gradient(100deg, transparent 40%, rgba(255, 255, 255, 0.28) 50%, transparent 60%);
+  animation: sheenDrift 7s ease-in-out infinite;
+  pointer-events: none;
+}

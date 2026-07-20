@@ -9,8 +9,8 @@ const SELF_EDITABLE = [
   "bank_name", "account_no", "ifsc", "pan", "uan",
 ] as const;
 
-export async function GET() {
-  const me = await requireAuth();
+export async function GET(req: NextRequest) {
+  const me = await requireAuth(req);
   if (isErr(me)) return me;
   const row = (await get<Record<string, unknown>>(
     `SELECT e.*, m.name AS manager_name FROM employees e
@@ -22,7 +22,7 @@ export async function GET() {
 }
 
 export async function PUT(req: NextRequest) {
-  const me = await requireAuth();
+  const me = await requireAuth(req);
   if (isErr(me)) return me;
   const body = await req.json().catch(() => ({}));
 

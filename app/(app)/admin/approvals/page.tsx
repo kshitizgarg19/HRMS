@@ -2,23 +2,25 @@
 
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { ClipboardCheck, Check, X, Palmtree, Clock4, Receipt, Paperclip } from "lucide-react";
+import { ClipboardCheck, Check, X, Palmtree, Clock4, Receipt, Paperclip, Plane, MapPin } from "lucide-react";
 import { api } from "@/lib/api";
 import { fmtDate, fmtINR } from "@/lib/format";
 import { Badge, Button, Card, DataTable, Field, Modal, PageHeader, PageLoader, PersonCell, Tabs, Textarea, useToast } from "@/components/ui";
-import type { LeaveRequest, Reimbursement, Timesheet } from "@/lib/types";
+import type { DutyRequest, LeaveRequest, Reimbursement, Timesheet } from "@/lib/types";
 
 type LeaveRow = LeaveRequest & { avatar_color?: string | null };
 type TsRow = Timesheet & { avatar_color?: string | null; department?: string | null };
 type ReRow = Reimbursement & { avatar_color?: string | null; department?: string | null };
+type DutyRow = DutyRequest & { avatar_color?: string | null; department?: string | null };
 
-type Review = { kind: "leave" | "timesheet" | "reimbursement"; id: number; action: "approve" | "reject"; label: string };
+type Review = { kind: "leave" | "timesheet" | "reimbursement" | "duty"; id: number; action: "approve" | "reject"; label: string };
 
 function ApprovalsInner() {
   const sp = useSearchParams();
-  const initial = ["leaves", "timesheets", "reimbursements"].includes(sp.get("tab") || "") ? (sp.get("tab") as string) : "leaves";
+  const initial = ["leaves", "duty", "timesheets", "reimbursements"].includes(sp.get("tab") || "") ? (sp.get("tab") as string) : "leaves";
   const [tab, setTab] = useState(initial);
   const [leaves, setLeaves] = useState<LeaveRow[] | null>(null);
+  const [duty, setDuty] = useState<DutyRow[] | null>(null);
   const [timesheets, setTimesheets] = useState<TsRow[] | null>(null);
   const [claims, setClaims] = useState<ReRow[] | null>(null);
   const [review, setReview] = useState<Review | null>(null);
@@ -29,17 +31,25 @@ function ApprovalsInner() {
   const load = useCallback(() => {
     // A dataset can 403 when the approval policy doesn't include this user (e.g. an HOD with timesheet-only rights) — treat it as empty.
     api<{ requests: LeaveRow[] }>("/api/leaves?all=1&status=Pending").then((d) => setLeaves(d.requests)).catch(() => setLeaves([]));
+    api<{ requests: DutyRow[] }>("/api/duty?all=1&status=Pending").then((d) => setDuty(d.requests)).catch(() => setDuty([]));
     api<{ rows: TsRow[] }>("/api/timesheets?all=1&status=Pending").then((d) => setTimesheets(d.rows)).catch(() => setTimesheets([]));
     api<{ rows: ReRow[] }>("/api/reimbursements?all=1&status=Pending").then((d) => setClaims(d.rows)).catch(() => setClaims([]));
   }, []);
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+    // LIVE: re-poll every 5s (only while the tab is visible) so new requests appear without a manual refresh
+    const t = setInterval(() => { if (!document.hidden) load(); }, 5000);
+    const onVis = () => { if (!document.hidden) load(); };
+    document.addEventListener("visibilitychange", onVis);
+    return () => { clearInterval(t); document.removeEventListener("visibilitychange", onVis); };
+  }, [load]);
 
-  if (!leaves || !timesheets || !claims) return <PageLoader />;
+  if (!leaves || !duty || !timesheets || !claims) return <PageLoader />;
 
   const act = async (r: Review, withNote: string) => {
     setBusy(true);
     try {
-      const url = r.kind === "leave" ? `/api/leaves/${r.id}` : r.kind === "timesheet" ? `/api/timesheets/${r.id}` : `/api/reimbursements/${r.id}`;
+      const url = r.kind === "leave" ? `/api/leaves/${r.id}` : r.kind === "duty" ? `/api/duty/${r.id}` : r.kind === "timesheet" ? `/api/timesheets/${r.id}` : `/api/reimbursements/${r.id}`;
       const method = r.kind === "timesheet" ? "PUT" : "PATCH";
       await api(url, { method, body: JSON.stringify({ action: r.action, note: withNote || null }) });
       toast.push("success", `${r.label} ${r.action === "approve" ? "approved ✓" : "rejected"}`);
@@ -80,6 +90,7 @@ function ApprovalsInner() {
           <Tabs
             tabs={[
               { key: "leaves", label: <span className="flex items-center gap-1.5"><Palmtree size={13} /> Leaves ({leaves.length})</span> },
+              { key: "duty", label: <span className="flex items-center gap-1.5"><Plane size={13} /> On Duty ({duty.length})</span> },
               { key: "timesheets", label: <span className="flex items-center gap-1.5"><Clock4 size={13} /> Timesheets ({timesheets.length})</span> },
               { key: "reimbursements", label: <span className="flex items-center gap-1.5"><Receipt size={13} /> Claims ({claims.length})</span> },
             ]}
@@ -110,6 +121,31 @@ function ApprovalsInner() {
               { key: "reason", header: "Reason", className: "max-w-[240px]", render: (r) => <span className="line-clamp-2 text-[13px] text-slate-500 dark:text-slate-400">{r.reason}</span> },
               { key: "resp", header: "Backup", render: (r) => <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">{r.responsible_name || "—"}</span> },
               { key: "act", header: "Actions", className: "text-right", render: (r) => quickActions("leave", r.id, `${r.employee_name}'s ${r.leave_type}`) },
+            ]}
+          />
+        </Card>
+      )}
+
+      {tab === "duty" && (
+        <Card title="Pending On-Duty Requests" icon={<Plane size={16} />}>
+          <DataTable
+            rows={duty}
+            keyFor={(r) => r.id}
+            empty={<p className="text-center text-sm text-slate-400 dark:text-slate-500">No pending on-duty requests 🎉</p>}
+            columns={[
+              { key: "emp", header: "Employee", render: (r) => <PersonCell name={r.employee_name || ""} sub={`${r.emp_code} · ${r.department || "—"}`} color={r.avatar_color} /> },
+              { key: "where", header: "Location", render: (r) => <span className="flex items-center gap-1.5 text-[13px] font-bold text-slate-700 dark:text-slate-200"><MapPin size={13} className="text-indigo-500" /> {r.location}</span> },
+              {
+                key: "dates", header: "Dates",
+                render: (r) => (
+                  <span>
+                    <span className="block text-[13px] font-bold text-slate-700 dark:text-slate-200">{fmtDate(r.from_date)}{r.from_date !== r.to_date && ` → ${fmtDate(r.to_date)}`}</span>
+                    <span className="text-xs text-slate-400 dark:text-slate-500">{r.days} day{r.days === 1 ? "" : "s"}{r.slot !== "full" && ` · ${r.slot} half`}</span>
+                  </span>
+                ),
+              },
+              { key: "purpose", header: "Purpose", className: "max-w-[240px]", render: (r) => <span className="line-clamp-2 text-[13px] text-slate-500 dark:text-slate-400">{r.purpose}</span> },
+              { key: "act", header: "Actions", className: "text-right", render: (r) => quickActions("duty", r.id, `${r.employee_name}'s on-duty`) },
             ]}
           />
         </Card>
@@ -147,7 +183,11 @@ function ApprovalsInner() {
                 render: (r) => (
                   <span>
                     <span className="line-clamp-2 text-[13px] text-slate-500 dark:text-slate-400">{r.description}</span>
-                    {r.receipt && <span className="mt-0.5 flex items-center gap-1 text-[11px] font-semibold text-indigo-500"><Paperclip size={11} /> {r.receipt}</span>}
+                    {r.has_receipt ? (
+                      <a href={`/api/reimbursements/${r.id}/receipt`} target="_blank" rel="noopener noreferrer" className="mt-0.5 inline-flex items-center gap-1 text-[11px] font-bold text-indigo-500 hover:underline dark:text-indigo-400"><Paperclip size={11} /> View bill</a>
+                    ) : r.receipt ? (
+                      <span className="mt-0.5 flex items-center gap-1 text-[11px] font-semibold text-slate-400 dark:text-slate-500"><Paperclip size={11} /> {r.receipt}</span>
+                    ) : null}
                   </span>
                 ),
               },

@@ -1,9 +1,9 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse  } from "next/server";
 import { get, all } from "@/lib/db";
 import { requireAuth, isErr } from "@/lib/auth";
 
-export async function GET() {
-  const me = await requireAuth();
+export async function GET(req: NextRequest) {
+  const me = await requireAuth(req);
   if (isErr(me)) return me;
   const items: { id: string; kind: string; text: string; sub?: string; time: string; href: string }[] = [];
 
@@ -12,8 +12,10 @@ export async function GET() {
       leaves: (await get<{ c: number }>("SELECT COUNT(*) c FROM leave_requests WHERE status = 'Pending'"))!.c,
       timesheets: (await get<{ c: number }>("SELECT COUNT(*) c FROM timesheets WHERE status = 'Pending'"))!.c,
       reimb: (await get<{ c: number }>("SELECT COUNT(*) c FROM reimbursements WHERE status = 'Pending'"))!.c,
+      duty: (await get<{ c: number }>("SELECT COUNT(*) c FROM duty_requests WHERE status = 'Pending'"))!.c,
     };
     if (p.leaves) items.push({ id: "p-l", kind: "approval", text: `${p.leaves} leave request${p.leaves > 1 ? "s" : ""} awaiting review`, time: "", href: "/admin/approvals" });
+    if (p.duty) items.push({ id: "p-d", kind: "approval", text: `${p.duty} on-duty request${p.duty > 1 ? "s" : ""} awaiting review`, time: "", href: "/admin/approvals?tab=duty" });
     if (p.timesheets) items.push({ id: "p-t", kind: "approval", text: `${p.timesheets} timesheet${p.timesheets > 1 ? "s" : ""} awaiting review`, time: "", href: "/admin/approvals?tab=timesheets" });
     if (p.reimb) items.push({ id: "p-r", kind: "approval", text: `${p.reimb} reimbursement claim${p.reimb > 1 ? "s" : ""} awaiting review`, time: "", href: "/admin/approvals?tab=reimbursements" });
   }
@@ -30,8 +32,11 @@ export async function GET() {
       UNION ALL
       SELECT 'timesheet' kind, 'Timesheet (' || t.date || ')' detail, t.status, t.reviewed_at FROM timesheets t
         WHERE t.employee_id = ? AND t.reviewed_at IS NOT NULL
+      UNION ALL
+      SELECT 'duty' kind, 'On-duty (' || d.location || ')' detail, d.status, d.reviewed_at FROM duty_requests d
+        WHERE d.employee_id = ? AND d.reviewed_at IS NOT NULL
     ) ORDER BY reviewed_at DESC LIMIT 5`,
-    me.id, me.id, me.id
+    me.id, me.id, me.id, me.id
   );
 
   reviewed.forEach((r, i) =>
@@ -40,7 +45,7 @@ export async function GET() {
       kind: r.status === "Approved" ? "ok" : "no",
       text: `Your ${r.detail} was ${r.status.toLowerCase()}`,
       time: r.reviewed_at,
-      href: r.kind === "leave" ? "/leave" : r.kind === "claim" ? "/reimbursement" : "/timesheet",
+      href: r.kind === "leave" ? "/leave" : r.kind === "claim" ? "/reimbursement" : r.kind === "duty" ? "/duty" : "/timesheet",
     })
   );
 

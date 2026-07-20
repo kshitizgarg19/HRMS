@@ -65,8 +65,28 @@ export interface AttendanceRecord {
   check_in: string | null;
   check_out: string | null;
   hours: number | null;
-  status: "Present" | "Absent" | "Leave" | "Half Day" | "Holiday";
+  status: "Present" | "Absent" | "Leave" | "Half Day" | "Holiday" | "On Duty";
   mode: "WFO" | "WFH" | null;
+}
+
+export interface DutyRequest {
+  id: number;
+  employee_id: number;
+  employee_name?: string;
+  emp_code?: string;
+  department?: string | null;
+  avatar_color?: string | null;
+  from_date: string;
+  to_date: string;
+  days: number;
+  slot: "full" | "first" | "second";
+  location: string;
+  purpose: string;
+  status: "Pending" | "Approved" | "Rejected" | "Cancelled";
+  reviewed_by: number | null;
+  reviewer_name?: string | null;
+  review_note: string | null;
+  created_at: string;
 }
 
 export interface Timesheet {
@@ -89,6 +109,10 @@ export interface LeaveType {
   name: string;
   annual_quota: number;
   paid: number;
+  carry_forward?: number;
+  carry_cap?: number;
+  encashable?: number;
+  scope?: string | null;
 }
 
 export interface LeaveBalance {
@@ -132,6 +156,8 @@ export interface Reimbursement {
   expense_date: string;
   description: string;
   receipt: string | null;
+  receipt_type?: string | null;
+  has_receipt?: number;
   status: "Pending" | "Approved" | "Rejected";
   reviewed_by: number | null;
   reviewer_name?: string | null;
@@ -184,6 +210,15 @@ export interface Payslip {
   paid_days: number;
   status: "Generated" | "Paid";
   generated_at: string;
+  components?: string | null;
+}
+
+export interface SalaryComponent {
+  id: number;
+  name: string;
+  type: "earning" | "deduction";
+  amount: number;
+  active: number;
 }
 
 export interface Holiday {
@@ -202,4 +237,65 @@ export interface Announcement {
   created_by: number;
   author_name?: string;
   created_at: string;
+}
+
+/* ---------------- Books / Finance ---------------- */
+export interface BooksParty {
+  id: number;
+  type: "customer" | "vendor";
+  name: string;
+  company: string | null;
+  email: string | null;
+  phone: string | null;
+  gstin: string | null;
+  billing_address: string | null;
+  notes: string | null;
+  created_at: string;
+  receivable?: number; // outstanding (computed)
+}
+
+export interface BooksItem {
+  id: number;
+  name: string;
+  sku: string | null;
+  type: "goods" | "service";
+  rate: number;
+  purchase_rate: number;
+  tax_rate: number;
+  stock: number;
+  low_stock: number;
+  unit: string | null;
+  hsn: string | null;
+  active: number;
+}
+
+export interface BooksTxnLine {
+  id?: number;
+  item_id: number | null;
+  name: string;
+  qty: number;
+  rate: number;
+  tax_rate: number;
+  amount: number;
+}
+
+export interface BooksTxn {
+  id: number;
+  type: "quote" | "invoice" | "bill";
+  number: string;
+  party_id: number | null;
+  party_name?: string | null;
+  party_company?: string | null;
+  txn_date: string;
+  due_date: string | null;
+  status: string;
+  subtotal: number;
+  tax: number;
+  total: number;
+  paid: number;
+  notes: string | null;
+  converted_to: number | null;
+  created_at: string;
+  lines?: BooksTxnLine[];
+  payments?: { id: number; amount: number; pay_date: string; mode: string | null; reference: string | null }[];
 }
